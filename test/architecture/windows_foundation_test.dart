@@ -184,4 +184,13 @@ void main() {
       );
     }
   });
+
+  test('编导台绑定 Windows 的 Ctrl+A/Ctrl+Z，并显示对应提示', () {
+    final source = File(
+      'lib/features/director/director_page.dart',
+    ).readAsStringSync();
+    expect(source, contains('LogicalKeyboardKey.keyA, control: true'));
+    expect(source, contains('LogicalKeyboardKey.keyZ, control: true'));
+    expect(source, contains("Platform.isWindows ? 'Ctrl+Z' : '⌘Z'"));
+  });
 }

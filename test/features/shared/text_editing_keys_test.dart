@@ -71,11 +71,20 @@ void main() {
 
   test('放行表里每个键在输入框里都有自己的天职', () {
     // 空格＝选词/输入空格，←→＝光标与候选，Esc＝取消组合，
-    // ⌘A/⌘Z＝全选与撤销这段文字
-    expect(textEditingPassthrough.keys, hasLength(7));
+    // ⌘A/⌘Z 与 Ctrl+A/Ctrl+Z＝全选与撤销这段文字
+    expect(textEditingPassthrough.keys, hasLength(10));
     expect(
         textEditingPassthrough[
             const SingleActivator(LogicalKeyboardKey.space)],
         isA<DoNothingAndStopPropagationIntent>());
+    for (final activator in const [
+      SingleActivator(LogicalKeyboardKey.keyA, control: true),
+      SingleActivator(LogicalKeyboardKey.keyZ, control: true),
+      SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true),
+    ]) {
+      expect(textEditingPassthrough[activator],
+          isA<DoNothingAndStopPropagationIntent>(),
+          reason: 'Windows 文本框必须接住 Ctrl+A/Ctrl+Z，不能冒泡成页面操作');
+    }
   });
 }

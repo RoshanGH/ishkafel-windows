@@ -43,6 +43,12 @@ const Map<ShortcutActivator, Intent> textEditingPassthrough =
       DoNothingAndStopPropagationIntent(),
   SingleActivator(LogicalKeyboardKey.keyZ, meta: true, shift: true):
       DoNothingAndStopPropagationIntent(),
+  SingleActivator(LogicalKeyboardKey.keyA, control: true):
+      DoNothingAndStopPropagationIntent(),
+  SingleActivator(LogicalKeyboardKey.keyZ, control: true):
+      DoNothingAndStopPropagationIntent(),
+  SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true):
+      DoNothingAndStopPropagationIntent(),
 };
 
 /// **页面级快捷键的落脚点。**

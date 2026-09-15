@@ -3283,6 +3283,12 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
             ..clear()
             ..addAll([for (var i = 0; i < _doc.lines.length; i++) i]));
         },
+        const SingleActivator(LogicalKeyboardKey.keyA, control: true): () {
+          if (isEditableTextFocused()) return;
+          setState(() => _multiSelected
+            ..clear()
+            ..addAll([for (var i = 0; i < _doc.lines.length; i++) i]));
+        },
         const SingleActivator(LogicalKeyboardKey.escape): () {
           // 输入法组合时 Esc 是取消组合
           if (isEditableTextFocused()) return;
@@ -3294,6 +3300,15 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
         },
         const SingleActivator(LogicalKeyboardKey.keyZ,
             meta: true, shift: true): () {
+          if (isEditableTextFocused()) return;
+          _redo();
+        },
+        const SingleActivator(LogicalKeyboardKey.keyZ, control: true): () {
+          if (isEditableTextFocused()) return;
+          _undo();
+        },
+        const SingleActivator(LogicalKeyboardKey.keyZ,
+            control: true, shift: true): () {
           if (isEditableTextFocused()) return;
           _redo();
         },
@@ -3762,15 +3777,16 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
   Future<void> _multiDelete(List<int> lines) async {
     final withVoice =
         lines.where((i) => _doc.lines[i].voiceover != null).length;
+    final undoShortcut = Platform.isWindows ? 'Ctrl+Z' : '⌘Z';
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AppColors.surfaceRaised,
         title: Text('删掉这 ${lines.length} 行？'),
         content: Text(withVoice == 0
-            ? '删掉之后可以按 ⌘Z 撤销。'
+            ? '删掉之后可以按 $undoShortcut 撤销。'
             : '其中 $withVoice 句已经配好音，删掉这些配音也一并没了。'
-                '删错了可以按 ⌘Z 撤销。'),
+                '删错了可以按 $undoShortcut 撤销。'),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
