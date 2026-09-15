@@ -20,6 +20,9 @@ void main() {
           r'D:\OneDrive 重定向\AppData\Roaming\com.jichuang\ishkafel\ishkafel_data');
       expect(paths.localApplicationData,
           r'D:\OneDrive 重定向\AppData\Local\com.jichuang\ishkafel');
+      expect(paths.userHome, r'D:\用户\阿明');
+      expect(paths.videosDirectory, r'D:\用户\阿明\Videos');
+      expect(paths.desktopDirectory, r'D:\用户\阿明\Desktop');
     });
 
     test('macOS 保持现有 bundle id 目录', () {
@@ -32,6 +35,9 @@ void main() {
           '/Users/阿明/Library/Application Support/com.jichuang.ishkafel');
       expect(paths.dataDir,
           '/Users/阿明/Library/Application Support/com.jichuang.ishkafel/ishkafel_data');
+      expect(paths.userHome, '/Users/阿明');
+      expect(paths.videosDirectory, '/Users/阿明/Movies');
+      expect(paths.desktopDirectory, '/Users/阿明/Desktop');
     });
 
     test('必要的系统根目录缺失时明确失败', () {

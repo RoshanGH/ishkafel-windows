@@ -23,6 +23,7 @@ void main() {
       expect(calls[0].$2, [r'C:\成片 目录']);
       expect(calls[1].$1, 'explorer.exe');
       expect(calls[1].$2, ['/select,', r'C:\成片 目录\片子.mp4']);
+      expect(shell.revealLabel, '在文件资源管理器中显示');
     });
 
     test('macOS 保持 open 与 open -R 语义', () async {
@@ -43,6 +44,7 @@ void main() {
       expect(calls[0].$2, ['/Users/me/Movies']);
       expect(calls[1].$1, 'open');
       expect(calls[1].$2, ['-R', '/Users/me/Movies/a.mp4']);
+      expect(shell.revealLabel, '在访达中显示');
     });
 
     test('系统打开失败时把 stderr 变成可展示异常', () async {

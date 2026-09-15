@@ -22,6 +22,10 @@ class PlatformShell {
 
   String get pathSeparator => operatingSystem == 'windows' ? ';' : ':';
 
+  String get revealLabel => operatingSystem == 'windows'
+      ? '在文件资源管理器中显示'
+      : '在访达中显示';
+
   /// 用系统文件管理器打开一个目录。参数直接交给进程 API，不经过 shell，
   /// 所以中文、空格和 `&` 都不会被二次解释。
   Future<void> openPath(String path) => operatingSystem == 'windows'

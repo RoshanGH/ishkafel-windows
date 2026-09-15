@@ -15,6 +15,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/models/export_record.dart';
+import '../../core/platform/platform_paths.dart';
 import '../../core/platform/platform_shell.dart';
 
 
@@ -67,7 +68,7 @@ Future<void> showExportDialog(
   /// 让用户挑一个目录；返回 null 表示他取消了。注入而不是内建：单测不弹系统框
   Future<String?> Function()? pickDirectory,
 
-  /// 在访达里显示这个目录
+  /// 在系统文件管理器里显示这个目录
   Future<void> Function(String path)? revealDirectory,
 
   /// 导完之后把这一次记进项目（哪天、导了几条、成了几条、在哪儿）
@@ -121,7 +122,7 @@ Future<void> showExportDialog(
         vocalsPath: vocalsPath,
         outputDir: outputDir,
         pickDirectory: pickDirectory ?? pickExportDirectory,
-        revealDirectory: revealDirectory ?? revealInFinder,
+        revealDirectory: revealDirectory ?? revealInFileManager,
         onExported: onExported,
         now: now ?? DateTime.now,
         exports: exports,
@@ -135,20 +136,26 @@ Future<String?> pickExportDirectory() => getDirectoryPath(
     confirmButtonText: '导出到这里', initialDirectory: _defaultInitialDir());
 
 String? _defaultInitialDir() {
-  final home = Platform.environment['HOME'];
-  return home == null ? null : p.join(home, 'Movies');
+  try {
+    return PlatformPaths().videosDirectory;
+  } on StateError {
+    return null;
+  }
 }
 
 /// 把家目录缩成 `~`。导出路径通常很长，全写出来会把这一行挤没
 String shortenPath(String path) {
-  final home = Platform.environment['HOME'];
-  if (home == null || home.isEmpty || !path.startsWith(home)) return path;
-  return '~${path.substring(home.length)}';
+  try {
+    final home = PlatformPaths().userHome;
+    if (!path.startsWith(home)) return path;
+    return '~${path.substring(home.length)}';
+  } on StateError {
+    return path;
+  }
 }
 
-/// 在访达里显示。**用 `open` 而不是自己拼 AppleScript**：前者是 macOS 的
-/// 标准入口，路径里有空格、中文、`&` 都不会出事
-Future<void> revealInFinder(String path) async {
+/// 在系统文件管理器里显示，路径直接传给进程 API，不经过命令行解释。
+Future<void> revealInFileManager(String path) async {
   await PlatformShell().openPath(path);
 }
 
@@ -487,7 +494,7 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
             FilledButton(
               key: const Key('export-reveal'),
               onPressed: _reveal,
-              child: const Text('在访达中显示'),
+              child: Text(PlatformShell().revealLabel),
             ),
           if (_results == null)
             FilledButton(

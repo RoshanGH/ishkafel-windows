@@ -15,10 +15,10 @@
 
 ## Task 2：导出与设置页改用平台服务
 
-- [ ] 先扩展现有 Widget 测试，验证 Windows 文案显示“在文件资源管理器中显示”，点击仍走注入接口。
-- [ ] `export_dialog.dart` 的默认输出目录改用平台目录契约，不再读取 `HOME/Movies`；默认 reveal 改走 `PlatformShell`。
-- [ ] `about_section.dart` 改走平台服务，并按系统显示访达/文件资源管理器文案。
-- [ ] 目标测试与分析转绿并提交。
+- [x] 先扩展现有 Widget 测试，验证 Windows 文案显示“在文件资源管理器中显示”，点击仍走注入接口。
+- [x] `export_dialog.dart` 的默认输出目录改用平台目录契约，不再读取 `HOME/Movies`；默认 reveal 改走 `PlatformShell`。
+- [x] `about_section.dart` 改走平台服务，并按系统显示访达/文件资源管理器文案。
+- [x] 目标测试与分析转绿并提交。
 
 ## Task 3：工作台与编导台剪映接入
 

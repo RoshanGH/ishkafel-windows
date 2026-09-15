@@ -319,7 +319,7 @@ void main() {
       await tester.tap(find.byKey(const Key('export-pick-dir')));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining(elsewhere.path), findsOneWidget);
+      expect(find.textContaining(shortenPath(elsewhere.path)), findsOneWidget);
     });
 
     testWidgets('选择框里取消就保持原样，不要把已填好的位置清掉', (tester) async {
@@ -347,6 +347,10 @@ void main() {
 
       await tester.tap(find.byKey(const Key('export-start')));
       await tester.pumpAndSettle();
+      expect(
+        find.text(Platform.isWindows ? '在文件资源管理器中显示' : '在访达中显示'),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('export-reveal')));
       await tester.pumpAndSettle();
 
