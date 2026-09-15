@@ -14,18 +14,30 @@ import 'package:ishkafel/core/ffmpeg/media_tools_locator.dart';
 void main() {
   test('装 ffmpeg 的目录要排在前面，子进程才找得到', () {
     final path = childProcessPath(
-        currentPath: '/usr/bin:/bin', home: '/Users/someone');
+      currentPath: '/usr/bin:/bin',
+      home: '/Users/someone',
+      operatingSystem: 'macos',
+    );
 
-    expect(path.split(':').first, '/opt/homebrew/bin',
-        reason: 'Homebrew 优先——真机上 ffmpeg 就装在这儿');
+    expect(
+      path.split(':').first,
+      '/opt/homebrew/bin',
+      reason: 'Homebrew 优先——真机上 ffmpeg 就装在这儿',
+    );
     expect(path, contains('/usr/local/bin'), reason: 'Intel 机器上的 Homebrew');
-    expect(path, contains('/Users/someone/.local/bin'),
-        reason: 'uv tool install / pipx 装的东西在这儿');
+    expect(
+      path,
+      contains('/Users/someone/.local/bin'),
+      reason: 'uv tool install / pipx 装的东西在这儿',
+    );
   });
 
   test('继承来的 PATH 一个都不能丢——丢了会连累别的工具', () {
     final path = childProcessPath(
-        currentPath: '/usr/bin:/bin:/opt/custom', home: '/Users/someone');
+      currentPath: '/usr/bin:/bin:/opt/custom',
+      home: '/Users/someone',
+      operatingSystem: 'macos',
+    );
 
     for (final dir in ['/usr/bin', '/bin', '/opt/custom']) {
       expect(path.split(':'), contains(dir));
@@ -34,22 +46,51 @@ void main() {
 
   test('重复的目录只留一份，不把 PATH 撑成一串复读', () {
     final path = childProcessPath(
-        currentPath: '/opt/homebrew/bin:/usr/bin', home: '/Users/someone');
+      currentPath: '/opt/homebrew/bin:/usr/bin',
+      home: '/Users/someone',
+      operatingSystem: 'macos',
+    );
 
-    expect(path.split(':').where((d) => d == '/opt/homebrew/bin'), hasLength(1));
+    expect(
+      path.split(':').where((d) => d == '/opt/homebrew/bin'),
+      hasLength(1),
+    );
   });
 
   test('拿不到 HOME 也不能拼出 `null/.local/bin` 这种垃圾路径', () {
-    final path = childProcessPath(currentPath: '/usr/bin', home: null);
+    final path = childProcessPath(
+      currentPath: '/usr/bin',
+      home: null,
+      operatingSystem: 'macos',
+    );
 
     expect(path, isNot(contains('null')));
     expect(path.split(':'), everyElement(startsWith('/')));
   });
 
   test('PATH 为空时也要给出可用的目录，而不是空字符串', () {
-    final path = childProcessPath(currentPath: '', home: '/Users/someone');
+    final path = childProcessPath(
+      currentPath: '',
+      home: '/Users/someone',
+      operatingSystem: 'macos',
+    );
 
     expect(path.split(':'), contains('/opt/homebrew/bin'));
     expect(path.split(':'), isNot(contains('')));
+  });
+
+  test('Windows PATH 按分号拆分且不能拆坏盘符', () {
+    final path = childProcessPath(
+      currentPath: r'C:\Windows\System32;D:\媒体工具\bin',
+      home: r'C:\Users\someone',
+      operatingSystem: 'windows',
+      defaultDirs: const [r'C:\Program Files\Ishkafel\tools'],
+    );
+
+    expect(path.split(';'), [
+      r'C:\Program Files\Ishkafel\tools',
+      r'C:\Windows\System32',
+      r'D:\媒体工具\bin',
+    ]);
   });
 }

@@ -1,6 +1,9 @@
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 import '../log/app_log.dart';
+import '../platform/platform_shell.dart';
 
 /// 探测某个绝对路径上是否存在可执行文件（注入点，便于单测零真实依赖）
 typedef ExecutableProbe = bool Function(String absolutePath);
@@ -19,9 +22,9 @@ class MediaToolsStatus {
 
   /// 缺失的工具名，顺序固定为 ffmpeg、ffprobe，便于稳定展示
   List<String> get missingTools => List.unmodifiable([
-        if (ffmpegPath == null) MediaToolsLocator.ffmpeg,
-        if (ffprobePath == null) MediaToolsLocator.ffprobe,
-      ]);
+    if (ffmpegPath == null) MediaToolsLocator.ffmpeg,
+    if (ffprobePath == null) MediaToolsLocator.ffprobe,
+  ]);
 }
 
 /// 交给**子进程**用的 PATH。
@@ -42,22 +45,28 @@ String childProcessPath({
   String? currentPath,
   List<String> extraDirs = const [],
   String? home,
+  String? operatingSystem,
+  List<String>? defaultDirs,
 }) {
+  final os = operatingSystem ?? Platform.operatingSystem;
+  final shell = PlatformShell(operatingSystem: os);
   final resolvedHome = home ?? Platform.environment['HOME'];
   final dirs = <String>[
-    ...MediaToolsLocator.defaultSearchDirs,
+    ...(defaultDirs ?? MediaToolsLocator.defaultSearchDirsFor(os)),
     // uv tool install / pipx 都装在这儿（audio-separator 本身就在这里）
-    if (resolvedHome != null && resolvedHome.isNotEmpty)
+    if (os != 'windows' && resolvedHome != null && resolvedHome.isNotEmpty)
       '$resolvedHome/.local/bin',
     ...extraDirs,
-    ...(currentPath ?? Platform.environment['PATH'] ?? '').split(':'),
+    ...(currentPath ?? Platform.environment['PATH'] ?? '').split(
+      shell.pathSeparator,
+    ),
   ];
   // 去重并丢掉空段：PATH 里出现空段等于把当前目录也算进去，是个安全问题
   final seen = <String>{};
   return [
     for (final d in dirs)
       if (d.isNotEmpty && seen.add(d)) d,
-  ].join(':');
+  ].join(shell.pathSeparator);
 }
 
 /// ffmpeg/ffprobe 可执行文件定位。
@@ -83,6 +92,8 @@ class MediaToolsLocator {
   final List<String> searchDirs;
   final ExecutableProbe probe;
   final PathLookup lookupOnPath;
+  final String operatingSystem;
+  final PlatformShell _shell;
 
   /// 解析缓存：值为 null 表示「已探测过且没找到」，同样不再重复探测
   final Map<String, String?> _cache = {};
@@ -91,13 +102,31 @@ class MediaToolsLocator {
     List<String>? searchDirs,
     ExecutableProbe? probe,
     PathLookup? lookupOnPath,
-  })  : searchDirs = List.unmodifiable(searchDirs ?? defaultSearchDirs),
-        probe = probe ?? _fileExists,
-        lookupOnPath = lookupOnPath ?? _whichOnPath;
+    String? operatingSystem,
+    String? executableDirectory,
+  }) : operatingSystem = operatingSystem ?? Platform.operatingSystem,
+       searchDirs = List.unmodifiable(
+         searchDirs ??
+             defaultSearchDirsFor(
+               operatingSystem ?? Platform.operatingSystem,
+               executableDirectory: executableDirectory,
+             ),
+       ),
+       probe = probe ?? _fileExists,
+       _shell = PlatformShell(
+         operatingSystem: operatingSystem ?? Platform.operatingSystem,
+       ),
+       lookupOnPath =
+           lookupOnPath ??
+           PlatformShell(
+             operatingSystem: operatingSystem ?? Platform.operatingSystem,
+           ).lookupOnPath;
 
   /// 解析可执行文件的绝对路径；找不到返回 null（由调用方决定如何提示用户）
-  String? resolve(String executableName) =>
-      _cache.putIfAbsent(executableName, () => _resolveUncached(executableName));
+  String? resolve(String executableName) => _cache.putIfAbsent(
+    executableName,
+    () => _resolveUncached(executableName),
+  );
 
   /// 清掉「没找到」的缓存，让下一次解析重新探测。
   ///
@@ -108,8 +137,13 @@ class MediaToolsLocator {
 
   String? _resolveUncached(String executableName) {
     for (final dir in searchDirs) {
-      final candidate = '$dir/$executableName';
-      if (probe(candidate)) return candidate;
+      final context = p.Context(
+        style: operatingSystem == 'windows' ? p.Style.windows : p.Style.posix,
+      );
+      for (final name in _shell.executableNames(executableName)) {
+        final candidate = context.join(dir, name);
+        if (probe(candidate)) return candidate;
+      }
     }
     return lookupOnPath(executableName);
   }
@@ -131,15 +165,16 @@ class MediaToolsLocator {
 
   /// 用绝对路径调用 `/usr/bin/which`（该目录在任何启动方式下都在 PATH 中）；
   /// which 自身异常（如系统裁剪）一律视为未找到，不向上抛。
-  static String? _whichOnPath(String executableName) {
-    try {
-      final result = Process.runSync('/usr/bin/which', [executableName]);
-      if (result.exitCode != 0) return null;
-      final path = (result.stdout as String).trim();
-      return path.isEmpty ? null : path;
-    } catch (e) {
-      AppLog.warn('PATH 查找 $executableName 失败：$e');
-      return null;
+  static List<String> defaultSearchDirsFor(
+    String operatingSystem, {
+    String? executableDirectory,
+  }) {
+    if (operatingSystem == 'windows') {
+      final base =
+          executableDirectory ?? p.dirname(Platform.resolvedExecutable);
+      return [p.Context(style: p.Style.windows).join(base, 'tools')];
     }
+    if (operatingSystem == 'macos') return defaultSearchDirs;
+    return const ['/usr/local/bin', '/usr/bin'];
   }
 }

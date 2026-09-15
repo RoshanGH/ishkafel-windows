@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../log/app_log.dart';
+import '../platform/platform_shell.dart';
 
 /// 心跳停多久算失效。
 ///
@@ -59,10 +60,10 @@ class TaskLock {
   }
 
   Map<String, dynamic> toJson() => {
-        'holder': holder,
-        'acquiredAt': acquiredAt.toIso8601String(),
-        'heartbeatAt': heartbeatAt.toIso8601String(),
-      };
+    'holder': holder,
+    'acquiredAt': acquiredAt.toIso8601String(),
+    'heartbeatAt': heartbeatAt.toIso8601String(),
+  };
 
   /// 宽松解析：**任何一处不对就返回 null**，由调用方当作「没有锁」。
   /// 一个读不懂的锁文件不该把任务永久封死
@@ -112,7 +113,9 @@ class TaskLockFile {
     if (!file.existsSync()) return null;
     try {
       return TaskLock.tryFromJson(
-          jsonDecode(file.readAsStringSync()), staleAfter);
+        jsonDecode(file.readAsStringSync()),
+        staleAfter,
+      );
     } catch (e) {
       AppLog.warn('任务锁读不懂，当作没有锁（$taskId）：$e');
       return null;
@@ -137,8 +140,9 @@ class TaskLockFile {
     final at = now ?? DateTime.now().toUtc();
     final current = read();
     if (current == null || current.holder != holder) return false;
-    _write(TaskLock(
-        holder: holder, acquiredAt: current.acquiredAt, heartbeatAt: at));
+    _write(
+      TaskLock(holder: holder, acquiredAt: current.acquiredAt, heartbeatAt: at),
+    );
     return true;
   }
 
@@ -169,17 +173,11 @@ class TaskLockFile {
   }
 }
 
-
 /// 这个进程号还在不在。
 ///
 /// 用 `kill(pid, 0)` 的等价物：`ps -p` 查一次。只在开任务、拿锁这类稀疏
 /// 时刻调用，不在热路径上。查不动就当它活着——保守方向是「不接管」，
 /// 宁可让人多等一分钟，也不能把另一个真开着的窗口挤掉。
 bool isProcessAlive(int pid) {
-  if (pid <= 0) return true;
-  try {
-    return Process.runSync('ps', ['-p', '$pid']).exitCode == 0;
-  } catch (_) {
-    return true;
-  }
+  return PlatformShell().isProcessAlive(pid);
 }
