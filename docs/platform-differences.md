@@ -14,7 +14,7 @@
 | 命令文案 | 面向 Windows 用户写“在 PowerShell 中运行”，命令必须是 PowerShell/Windows 版本 | 不出现 `brew`、`open`、`chmod`、`/bin/sh` 等不可执行配方 |
 | 路径显示 | 显示完整 Windows 路径或 `%USERPROFILE%`，不以 `~` 作为主要用户文案 | 盘符、反斜杠、空格、中文和 OneDrive 重定向均正确 |
 | 默认成片目录 | 使用 Windows Known Folder `Videos` 下的 `ishkafel`，不手拼 `~/Movies` | 尊重系统重定向后的真实 Videos 位置 |
-| 等宽字体 | 使用 `Cascadia Mono` 或 `Consolas`，统一通过 `AppFont.mono` token | 路径、JSON、命令和 ID 保持等宽对齐 |
+| 等宽字体 | 使用 `Cascadia Mono` 或 `Consolas`，统一通过 `platformMonospaceFontFamily` | 路径、JSON、命令和 ID 保持等宽对齐 |
 | 滚动条 | 使用覆盖式、自动隐藏的 `ScrollbarTheme`，避免占位挤压三栏 | 各 DPI 和窗口宽度下不改变内容布局 |
 | 滚轮缩放 | 对 Windows 鼠标滚轮的离散 120 单位设置独立 scale | 一格滚轮不会产生过大跳变，触控板仍连续 |
 | 安装和签名 | 开发产物为 `.exe`，正式分发使用 MSIX 与 Windows 代码签名 | 安装、卸载、升级、签名校验和回滚可验证 |

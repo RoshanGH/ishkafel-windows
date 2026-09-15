@@ -3593,7 +3593,9 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
       });
       return;
     }
-    if (keys.isMetaPressed) {
+    final additiveSelection =
+        Platform.isWindows ? keys.isControlPressed : keys.isMetaPressed;
+    if (additiveSelection) {
       setState(() {
         if (_multiSelected.isEmpty) _multiSelected.add(_selected);
         if (!_multiSelected.remove(index)) _multiSelected.add(index);

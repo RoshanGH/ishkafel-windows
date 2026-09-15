@@ -192,5 +192,12 @@ void main() {
     expect(source, contains('LogicalKeyboardKey.keyA, control: true'));
     expect(source, contains('LogicalKeyboardKey.keyZ, control: true'));
     expect(source, contains("Platform.isWindows ? 'Ctrl+Z' : '⌘Z'"));
+    expect(
+      source,
+      contains(
+        'Platform.isWindows ? keys.isControlPressed : keys.isMetaPressed',
+      ),
+      reason: 'Windows 多选必须认 Ctrl+点击，不能只认 Mac Command',
+    );
   });
 }
