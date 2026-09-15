@@ -1,0 +1,9 @@
+{
+  "version": "9.0.1",
+  "distribution": "Gyan FFmpeg release essentials x64 static",
+  "archiveUrl": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.1/ffmpeg-9.0.1-essentials_build.zip",
+  "archiveSha256": "fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9",
+  "license": "GPL-3.0-or-later",
+  "buildInfoUrl": "https://www.gyan.dev/ffmpeg/builds/",
+  "sourceUrl": "https://github.com/FFmpeg/FFmpeg/commit/bf1b838f2a"
+}
