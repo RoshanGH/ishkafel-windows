@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/core/ai/ai_credentials.dart';
 import 'package:ishkafel/core/diagnostics/environment_report.dart';
 import 'package:ishkafel/core/ffmpeg/media_tools_locator.dart';
+import 'package:ishkafel/core/ffmpeg/process_runner.dart';
 
 const _secret = 'sk-super-secret-key-value-0930';
 
@@ -83,11 +84,11 @@ void main() {
       final ffmpeg = report.tools.firstWhere((t) => t.name == 'ffmpeg');
       expect(ffmpeg.installed, isFalse);
       expect(ffmpeg.path, isNull);
-      expect(ffmpeg.hint, contains('brew install ffmpeg'));
+      expect(ffmpeg.hint, missingToolMessage('ffmpeg'));
 
       final miaoa = report.tools.firstWhere((t) => t.name == 'miaoa');
       expect(miaoa.installed, isFalse);
-      expect(miaoa.hint, isNot(contains('brew install ffmpeg')),
+      expect(miaoa.hint, isNot(missingToolMessage('ffmpeg')),
           reason: '照着装 ffmpeg 并不会让 miaoa 出现，用户会以为软件坏了');
     });
 

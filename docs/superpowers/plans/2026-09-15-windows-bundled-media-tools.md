@@ -33,12 +33,12 @@
 - Consumes: Gyan FFmpeg 9.0.1 Essentials ZIP 或测试提供的本地 ZIP。
 - Produces: `prepare_media_tools.ps1 -ArchivePath <zip> -ExpectedSha256 <sha> -OutputDirectory <dir>`，成功时输出含 `tools/ffmpeg.exe`、`tools/ffprobe.exe`、`LICENSE.txt`、`NOTICE.md` 的暂存目录。
 
-- [ ] **Step 1: 写失败测试**：测试创建带假 `bin/ffmpeg.exe`、`bin/ffprobe.exe`、`LICENSE`、`README.txt` 的 ZIP；断言脚本校验后完整暂存，并断言错误哈希退出非零且不留下 tools。
-- [ ] **Step 2: 运行 `flutter test test/windows/media_tools_bundle_script_test.dart`**，确认因脚本不存在而失败。
-- [ ] **Step 3: 写最小实现**：读取 manifest，下载或使用本地归档，SHA-256 不一致立即失败，解压到临时目录并唯一定位两个 exe，原子替换输出目录。
-- [ ] **Step 4: 重跑测试**，确认正确归档通过、错误哈希失败。
-- [ ] **Step 5: 用真实 9.0.1 ZIP 运行准备脚本**，确认 `ffmpeg -version`、`ffprobe -version` 与 manifest 一致。
-- [ ] **Step 6: 提交 `build: 固化 Windows FFmpeg 供应链`**。
+- [x] **Step 1: 写失败测试**：测试创建带假 `bin/ffmpeg.exe`、`bin/ffprobe.exe`、`LICENSE`、`README.txt` 的 ZIP；断言脚本校验后完整暂存，并断言错误哈希退出非零且不留下 tools。
+- [x] **Step 2: 运行 `flutter test test/windows/media_tools_bundle_script_test.dart`**，确认因脚本不存在而失败。
+- [x] **Step 3: 写最小实现**：读取 manifest，下载或使用本地归档，SHA-256 不一致立即失败，解压到临时目录并唯一定位两个 exe，原子替换输出目录。
+- [x] **Step 4: 重跑测试**，确认正确归档通过、错误哈希失败。
+- [x] **Step 5: 用真实 9.0.1 ZIP 运行准备脚本**，确认 `ffmpeg -version`、`ffprobe -version` 与 manifest 一致。
+- [x] **Step 6: 提交 `build: 固化 Windows FFmpeg 供应链`**。
 
 ### Task 2: 接入 Windows Release 打包
 
@@ -52,11 +52,11 @@
 - Consumes: Task 1 的 `build/vendor/ffmpeg`。
 - Produces: `build/windows/x64/runner/Release/tools/ffmpeg.exe` 与 `ffprobe.exe`；CI 每次从空环境重新校验供应链。
 
-- [ ] **Step 1: 扩展失败测试**：在未准备工具时验证打包前置检查失败；准备后验证预期文件布局。
-- [ ] **Step 2: 运行测试确认红灯**。
-- [ ] **Step 3: CMake 安装已暂存的 `tools/` 与许可材料；`build_app.ps1` 在 CLI 与 Flutter 构建前调用准备脚本；CI 显式准备并缓存归档。**
-- [ ] **Step 4: 运行脚本测试与 `flutter build windows --release`，检查 Release tools 目录。**
-- [ ] **Step 5: 提交 `build: 将固定 FFmpeg 内置到 Windows Release`**。
+- [x] **Step 1: 扩展失败测试**：在未准备工具时验证打包前置检查失败；准备后验证预期文件布局。
+- [x] **Step 2: 运行测试确认红灯**。
+- [x] **Step 3: CMake 安装已暂存的 `tools/` 与许可材料；`build_app.ps1` 在 CLI 与 Flutter 构建前调用准备脚本；CI 显式准备并缓存归档。**
+- [x] **Step 4: 运行脚本测试与 `flutter build windows --release`，检查 Release tools 目录。**
+- [x] **Step 5: 提交 `build: 将固定 FFmpeg 内置到 Windows Release`**。
 
 ### Task 3: 统一运行时探测与 Windows 错误语义
 
@@ -70,11 +70,11 @@
 - Consumes: `systemProcessRunner` 与 `MediaToolsLocator`。
 - Produces: doctor 使用同一定位器验证内置 ffmpeg；Windows 安装损坏时提示重新安装，不再要求执行 Homebrew。
 
-- [ ] **Step 1: 写失败测试**：doctor 默认探针经注入 runner 调用 `ffmpeg -version`；`missingToolMessage('ffmpeg', operatingSystem: 'windows')` 不含 brew 且说明安装包损坏。
-- [ ] **Step 2: 运行两个目标测试确认红灯原因正确。**
-- [ ] **Step 3: 最小修改 doctor 与错误消息，Mac 提示保持原样。**
-- [ ] **Step 4: 目标测试转绿并运行全部 `test/core/ffmpeg` 与 `test/cli`。**
-- [ ] **Step 5: 提交 `fix: 统一 Windows 内置媒体工具探测`**。
+- [x] **Step 1: 写失败测试**：doctor 默认探针经注入 runner 调用 `ffmpeg -version`；`missingToolMessage('ffmpeg', operatingSystem: 'windows')` 不含 brew 且说明安装包损坏。
+- [x] **Step 2: 运行两个目标测试确认红灯原因正确。**
+- [x] **Step 3: 最小修改 doctor 与错误消息，Mac 提示保持原样。**
+- [x] **Step 4: 目标测试转绿并运行全部 `test/core/ffmpeg` 与 `test/cli`。**
+- [x] **Step 5: 提交 `fix: 统一 Windows 内置媒体工具探测`**。
 
 ### Task 4: 真实媒体链路冒烟验证
 
@@ -85,12 +85,12 @@
 
 **Interfaces:**
 - Consumes: Release bundle 的内置 ffmpeg/ffprobe。
-- Produces: 2 秒 320×568/30fps H.264+A​​AC 样片、PNG 抽帧、PCM WAV、拼接输出及 ffprobe JSON 断言。
+- Produces: 2 秒 320×568/30fps H.264 + AAC 样片、PNG 抽帧、PCM WAV、拼接输出及 ffprobe JSON 断言。
 
-- [ ] **Step 1: 编写冒烟脚本并先对缺少 tools 的空目录运行，确认明确失败。**
-- [ ] **Step 2: 对 Release tools 运行：合成两段测试源、抽帧、提取音频、拼接并验证流数量、尺寸、帧率与时长。**
-- [ ] **Step 3: 将冒烟脚本放在 Release 构建后、产物上传前执行。**
-- [ ] **Step 4: 运行 `flutter analyze`、完整 `flutter test`、Release 构建、字幕冒烟与媒体冒烟。**
+- [x] **Step 1: 编写冒烟脚本并先对缺少 tools 的空目录运行，确认明确失败。**
+- [x] **Step 2: 对 Release tools 运行：合成两段测试源、抽帧、提取音频、拼接并验证流数量、尺寸、帧率与时长。**
+- [x] **Step 3: 将冒烟脚本放在 Release 构建后、产物上传前执行。**
+- [x] **Step 4: 运行 `flutter analyze`、完整 `flutter test`、Release 构建、字幕冒烟与媒体冒烟。**
 - [ ] **Step 5: 更新基线证据并提交 `test: 验证 Windows 真实媒体链路`**。
 
 ### Task 5: 合并与远端复验

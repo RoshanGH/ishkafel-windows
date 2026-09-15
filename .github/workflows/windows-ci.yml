@@ -46,6 +46,9 @@ jobs:
       - name: Smoke-test subtitle renderer
         shell: pwsh
         run: ./scripts/windows/test_renderer.ps1 -Mode Release
+      - name: Smoke-test real media pipeline
+        shell: pwsh
+        run: ./scripts/windows/test_media_pipeline.ps1 -Mode Release
       - uses: actions/upload-artifact@v4
         with:
           name: ishkafel-windows-${{ github.sha }}

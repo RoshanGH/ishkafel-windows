@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/cli/commands/doctor_command.dart';
-import 'package:ishkafel/core/ffmpeg/process_runner.dart';
 
 /// 开工前的体检。
 ///

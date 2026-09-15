@@ -21,6 +21,8 @@
 - Ninja 1.12.1（Visual Studio 随附）
 - Git 2.55.0.windows.4、OpenSSH_for_Windows 8.6p1
 - GitHub CLI 2.100.0
+- Windows Release 内置 Gyan FFmpeg 9.0.1 Essentials x64（GPLv3），发布 ZIP 的
+  SHA-256 固定为 `fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9`
 
 `flutter doctor -v` 的 Flutter、Windows、Visual Studio、浏览器、设备和网络项通过；
 唯一警告为 Android SDK 未安装，与本仓库的 Windows 桌面构建无关。
@@ -88,7 +90,11 @@ Windows 特有失败集中于：
 - `flutter build windows --release`：退出码 0，生成原生 Windows Release bundle；
 - `scripts/windows/test_renderer.ps1 -Mode Release`：退出码 0，成功输出包含中文的透明字幕 PNG，
   SHA-256 为 `753BFA279552E3E98EA4B78B36D9083CAFBE2317F100DFD16BAA76CCF290E0D4`；
+- `scripts/windows/test_media_pipeline.ps1 -Mode Release`：退出码 0；仅使用 Release bundle 内置的
+  FFmpeg/ffprobe 生成两段 H.264 + AAC 竖屏素材，完成 PNG 抽帧、48kHz PCM WAV 拆音频和
+  重新编码拼接；ffprobe 验证结果为 320×568、30fps、4.000 秒且同时含视频流和音频流；
 - Release bundle 内的 `cli/bin/ishkafel.cmd --help`：退出码 0，中文帮助文本显示正常。
 
 原始基线的 62 个失败保留在上文作为迁移证据；当前结果证明路径、Windows 进程启动、
-CLI 安装入口、文件权限测试和架构守卫已经能够在 Windows 上完整回归。
+CLI 安装入口、文件权限测试和架构守卫已经能够在 Windows 上完整回归。GitHub Actions 也会
+从空环境按 manifest 校验并准备媒体工具，再执行字幕与真实媒体链路两项冒烟测试。
