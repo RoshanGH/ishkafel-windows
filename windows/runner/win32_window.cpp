@@ -197,6 +197,29 @@ Win32Window::MessageHandler(HWND hwnd,
 
       return 0;
     }
+    case WM_GETMINMAXINFO: {
+      if (minimum_size_.width == 0 || minimum_size_.height == 0) {
+        break;
+      }
+      const UINT dpi = FlutterDesktopGetDpiForHWND(hwnd);
+      RECT minimum_rect = {
+          0,
+          0,
+          Scale(minimum_size_.width, dpi / 96.0),
+          Scale(minimum_size_.height, dpi / 96.0),
+      };
+      const DWORD style = static_cast<DWORD>(GetWindowLongPtr(hwnd, GWL_STYLE));
+      const DWORD ex_style =
+          static_cast<DWORD>(GetWindowLongPtr(hwnd, GWL_EXSTYLE));
+      if (!AdjustWindowRectExForDpi(&minimum_rect, style, FALSE, ex_style,
+                                    dpi)) {
+        AdjustWindowRectEx(&minimum_rect, style, FALSE, ex_style);
+      }
+      auto minmax = reinterpret_cast<MINMAXINFO*>(lparam);
+      minmax->ptMinTrackSize.x = minimum_rect.right - minimum_rect.left;
+      minmax->ptMinTrackSize.y = minimum_rect.bottom - minimum_rect.top;
+      return 0;
+    }
     case WM_SIZE: {
       RECT rect = GetClientArea();
       if (child_content_ != nullptr) {
@@ -219,6 +242,35 @@ Win32Window::MessageHandler(HWND hwnd,
   }
 
   return DefWindowProc(window_handle_, message, wparam, lparam);
+}
+
+void Win32Window::SetMinimumSize(const Size& size) {
+  minimum_size_ = size;
+}
+
+void Win32Window::CenterOnCurrentMonitor() {
+  if (!window_handle_) {
+    return;
+  }
+  RECT bounds{};
+  MONITORINFO monitor_info{};
+  monitor_info.cbSize = sizeof(MONITORINFO);
+  const HMONITOR monitor =
+      MonitorFromWindow(window_handle_, MONITOR_DEFAULTTONEAREST);
+  if (!GetWindowRect(window_handle_, &bounds) ||
+      !GetMonitorInfo(monitor, &monitor_info)) {
+    return;
+  }
+  const int width = bounds.right - bounds.left;
+  const int height = bounds.bottom - bounds.top;
+  const int x = monitor_info.rcWork.left +
+                (monitor_info.rcWork.right - monitor_info.rcWork.left - width) /
+                    2;
+  const int y = monitor_info.rcWork.top +
+                (monitor_info.rcWork.bottom - monitor_info.rcWork.top - height) /
+                    2;
+  SetWindowPos(window_handle_, nullptr, x, y, 0, 0,
+               SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void Win32Window::Destroy() {

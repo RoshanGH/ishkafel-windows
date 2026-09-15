@@ -52,6 +52,13 @@ class Win32Window {
   // If true, closing this window will quit the application.
   void SetQuitOnClose(bool quit_on_close);
 
+  // Sets the minimum client-area size in logical pixels. DPI scaling and the
+  // non-client frame are applied when Windows asks for tracking constraints.
+  void SetMinimumSize(const Size& size);
+
+  // Centers the window inside the working area of its current monitor.
+  void CenterOnCurrentMonitor();
+
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
@@ -91,6 +98,8 @@ class Win32Window {
   static void UpdateTheme(HWND const window);
 
   bool quit_on_close_ = false;
+
+  Size minimum_size_ = Size(0, 0);
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;
