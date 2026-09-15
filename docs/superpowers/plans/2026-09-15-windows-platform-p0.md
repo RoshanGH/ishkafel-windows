@@ -4,9 +4,9 @@
 
 **目标：** 清除首轮基线发现的 7 个 Windows 运行时 P0，使 GUI 与 CLI 共用同一数据、媒体工具和字幕产物协议，并让 Windows 原生窗口达到已批准的尺寸契约。
 
-**架构：** 业务层继续保持 Flutter/Dart；所有操作系统差异收口到 `core/platform`。媒体执行继续使用绝对路径和现有 `ProcessRunner`。字幕由 GUI/CLI 共用的版本化 JSON 协议调用独立 `ishkafel_renderer`，Windows 先建立可构建、可诊断的原生入口，固定 Skia/HarfBuzz/FreeType 与字体接入作为同一工作流后续提交，绝不回退为 System.Drawing。
+**架构：** 业务层继续保持 Flutter/Dart；所有操作系统差异收口到 `core/platform`。媒体执行继续使用绝对路径和现有 `ProcessRunner`。字幕由 GUI/CLI 共用的版本化 JSON 协议调用独立 `ishkafel_renderer`。Windows 辅助进程是 C++17 托管的无窗口 Flutter Engine，复用锁定 SDK 内的 Skia/HarfBuzz，并随包携带固定 Noto CJK 字体，绝不回退为 System.Drawing；跨系统像素一致性仍以 Mac 同源辅助进程和 golden 叠图为最终证据。
 
-**技术栈：** Dart 3.13、Flutter 3.47、Win32/C++17、CMake、FFmpeg、Skia/HarfBuzz/FreeType（固定版本）、Flutter test、CTest。
+**技术栈：** Dart 3.13、Flutter 3.47、Win32/C++17、CMake、FFmpeg、锁定 Flutter Engine 中的 Skia/HarfBuzz、固定 Noto CJK 字体、Flutter test。
 
 ---
 
@@ -89,8 +89,8 @@
 1. 以现有 JXA spec 固化版本化 JSON 输入、输出和错误协议测试。
 2. Dart rasterizer 按平台选择：macOS 暂保留 JXA，Windows 只调用同协议 `ishkafel_renderer.exe`；找不到或输出不全时明确中止。
 3. 建立 C++17 原生进程、严格参数/UTF-8/退出码/原子输出骨架，并纳入 Windows bundle。
-4. 接入固定版本 Skia/HarfBuzz/FreeType 和随包字体前，绝不把骨架标记为字幕完成；该依赖接入、PNG golden 和 Mac/Windows 叠图作为本任务的验收后半段。
-5. 运行 Dart 协议测试、CTest、Release 构建并提交。
+4. 由 C++17 无窗口宿主启动锁定版本 Flutter Engine，禁用 Impeller，统一走 Skia 文本/PNG 管线并加载随包字体；真实 Release bundle 冒烟测试必须验证 UTF-8 中文路径和 PNG 签名。
+5. 运行 Dart 协议测试、Release 构建和 renderer 冒烟测试并提交；Mac 同源辅助进程、PNG golden 与 Mac/Windows 叠图另行作为跨系统像素一致性的最终验收，未取得证据前不宣称逐像素一致。
 
 ## 任务 7：全量回归与基线更新
 
@@ -101,4 +101,3 @@
 1. 运行 `flutter analyze`、目标 P0 测试、全量 `flutter test`、CLI 构建和 Windows Release 构建。
 2. 区分上游既有失败、Windows 测试可移植性失败和本轮回归；禁止用 skip 掩盖产品路径。
 3. 记录命令、退出码、产物与剩余问题，不提前宣称 Windows 首版完成。
-

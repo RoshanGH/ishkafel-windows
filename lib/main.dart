@@ -45,6 +45,11 @@ import 'features/workbench/bgm_picker_sheet.dart';
 import 'core/miaoa/material_downloader.dart';
 import 'core/export/export_runner.dart';
 import 'core/miaoa/miaoa_content_service.dart';
+import 'core/subtitle/subtitle_renderer_entry.dart';
+
+@pragma('vm:entry-point')
+Future<void> subtitleRendererMain(List<String> args) =>
+    runSubtitleRenderer(args);
 
 /// 素材人声分离器。预览与导出共用一份缓存目录，同一条素材只分离一次
 /// 人声分离结果落在**这个任务名下**（`vocals/<taskId>/`）：
@@ -68,8 +73,7 @@ Future<void> main(List<String> args) async {
   final dataDir = Directory(p.join(supportDir.path, 'ishkafel_data'));
   final repository = FileTaskRepository(dataDir);
   final coversDir = Directory(p.join(dataDir.path, 'covers'));
-  final artifactCleaner =
-      FileTaskArtifactCleaner(dataDir: dataDir);
+  final artifactCleaner = FileTaskArtifactCleaner(dataDir: dataDir);
   final importService = ImportService(
     repository: repository,
     ffprobe: FfprobeService(),
@@ -80,10 +84,12 @@ Future<void> main(List<String> args) async {
   // 两个位置都找：开发期从项目目录跑 `flutter run` 用前者；双击启动的
   // app 工作目录是 `/`，只能靠后者（打包版更常见的是 --dart-define 注入，
   // 见 scripts/build_macos.sh，那条路径优先级最高）
-  final credentials = CredentialsLoader.load(secretsDirs: [
-    Directory('${Directory.current.path}/.secrets'),
-    Directory('${dataDir.path}/credentials'),
-  ]);
+  final credentials = CredentialsLoader.load(
+    secretsDirs: [
+      Directory('${Directory.current.path}/.secrets'),
+      Directory('${dataDir.path}/credentials'),
+    ],
+  );
   final analysisPipeline = buildAnalysisPipeline(credentials, dataDir);
 
   // 启动期预检 ffmpeg/ffprobe：GUI 进程 PATH 不含 Homebrew 目录，
@@ -100,8 +106,10 @@ Future<void> main(List<String> args) async {
   try {
     final migrated = await migrateSharedMediaToTasks(dataDir);
     if (migrated.didSomething) {
-      AppLog.info('物料已按任务归位：搬 ${migrated.moved} 个、'
-          '清掉 ${migrated.orphansRemoved} 个没人引用的');
+      AppLog.info(
+        '物料已按任务归位：搬 ${migrated.moved} 个、'
+        '清掉 ${migrated.orphansRemoved} 个没人引用的',
+      );
     }
   } catch (e) {
     // 迁移失败不能挡启动：下次再迁，共享目录还在，数据不会丢
@@ -119,85 +127,101 @@ Future<void> main(List<String> args) async {
   // 两边对同一个约定（见 open_command.dart）
   final initialTaskId = initialTaskIdFrom(args);
 
-  runApp(ProviderScope(
-    overrides: [
-      initialTaskIdProvider.overrideWithValue(initialTaskId),
-      taskRepositoryProvider.overrideWithValue(repository),
-      importServiceProvider.overrideWithValue(importService),
-      analysisPipelineProvider.overrideWithValue(analysisPipeline),
-      // 编导台「从视频提取脚本」：凭据齐了才给实例，否则入口禁用并说明
-      scriptTranscriberProvider
-          .overrideWithValue(buildScriptTranscriber(credentials, dataDir)),
-      // 编导台「生成配音」：同上，语音凭据齐了才有
-      lineVoiceFactoryProvider
-          .overrideWithValue(defaultLineVoiceFactory(credentials, dataDir)),
-      // 配音要带上「参考片这一句是怎么念的」：不接这一步，预置音色只会用
-      // 默认语气平铺直叙（用户反馈：原片在激动地争吵，复刻出来情绪扁平）
-      lineDeliveryFactoryProvider
-          .overrideWithValue(defaultLineDeliveryFactory(credentials, dataDir)),
-      // 编导台「自动打标」：方舟凭据齐了才有
-      lineTaggerProvider.overrideWithValue(buildLineTagger(credentials)),
-      // 参考视觉镜头打标（多帧 vision：标签 + 画面描述）
-      refShotTaggerProvider
-          .overrideWithValue(buildRefShotTagger(credentials)),
-      // 挑中素材时顺手看一眼首帧图：烧没烧字、露的是谁家产品
-      // ——一次调用问两件事，只对挑中的那几条跑
-      frameCheckerProvider.overrideWithValue(buildFrameChecker(credentials)),
-      // 编导台：素材落地后看一眼画面（烧字 + 产品露出品牌）。
-      // 装配在 core，命令行那头共用同一份
-      shotFrameCheckFactoryProvider.overrideWithValue(
+  runApp(
+    ProviderScope(
+      overrides: [
+        initialTaskIdProvider.overrideWithValue(initialTaskId),
+        taskRepositoryProvider.overrideWithValue(repository),
+        importServiceProvider.overrideWithValue(importService),
+        analysisPipelineProvider.overrideWithValue(analysisPipeline),
+        // 编导台「从视频提取脚本」：凭据齐了才给实例，否则入口禁用并说明
+        scriptTranscriberProvider.overrideWithValue(
+          buildScriptTranscriber(credentials, dataDir),
+        ),
+        // 编导台「生成配音」：同上，语音凭据齐了才有
+        lineVoiceFactoryProvider.overrideWithValue(
+          defaultLineVoiceFactory(credentials, dataDir),
+        ),
+        // 配音要带上「参考片这一句是怎么念的」：不接这一步，预置音色只会用
+        // 默认语气平铺直叙（用户反馈：原片在激动地争吵，复刻出来情绪扁平）
+        lineDeliveryFactoryProvider.overrideWithValue(
+          defaultLineDeliveryFactory(credentials, dataDir),
+        ),
+        // 编导台「自动打标」：方舟凭据齐了才有
+        lineTaggerProvider.overrideWithValue(buildLineTagger(credentials)),
+        // 参考视觉镜头打标（多帧 vision：标签 + 画面描述）
+        refShotTaggerProvider.overrideWithValue(
+          buildRefShotTagger(credentials),
+        ),
+        // 挑中素材时顺手看一眼首帧图：烧没烧字、露的是谁家产品
+        // ——一次调用问两件事，只对挑中的那几条跑
+        frameCheckerProvider.overrideWithValue(buildFrameChecker(credentials)),
+        // 编导台：素材落地后看一眼画面（烧字 + 产品露出品牌）。
+        // 装配在 core，命令行那头共用同一份
+        shotFrameCheckFactoryProvider.overrideWithValue(
           (dir, taskId) => buildShotFrameCheck(
-              arkApiKey: credentials.arkApiKey, dataDir: dir, taskId: taskId)),
-      // **用 overrideWith 而不是 overrideWithValue**：横幅和「能否开工」都读它，
-      // 存成一个启动时算好的值的话，用户装好 ffmpeg 后横幅不消失、功能也不
-      // 恢复，只能重启 app。这样写才能在清掉未命中缓存后 invalidate 重算
-      mediaToolsStatusProvider
-          .overrideWith((ref) => sharedMediaToolsLocator.preflight()),
-      taskArtifactCleanerProvider.overrideWithValue(artifactCleaner),
-      // 设置页：扫描/体检都用真实目录与真实进程，注入点集中在这里
-      cacheScannerProvider.overrideWithValue(
-          CacheScanner(dataDir: dataDir)),
-      environmentProbeProvider.overrideWithValue(defaultEnvironmentProbe(
-          resolveMediaTools: sharedMediaToolsLocator.preflight,
-          credentials: credentials)),
-      miaoaAccountServiceProvider.overrideWithValue(MiaoaAccountService()),
-      miaoaAuthServiceProvider.overrideWithValue(MiaoaAuthService()),
-      toolInstallerProvider.overrideWithValue(ToolInstaller()),
-      dataDirProvider.overrideWithValue(dataDir),
-      // 「生成配音」：凭据齐了才给工厂，否则工作台把按钮禁用并说明原因，
-      // 而不是让用户点了之后撞一个网络错误
-      // 听一段上传的配音说了什么：和命令行那条路同一份实现
-      voiceWordsProvider.overrideWithValue(
-        credentials.speechAppId.isEmpty
-            ? null
-            : (audio) => transcribeVoiceWords(
+            arkApiKey: credentials.arkApiKey,
+            dataDir: dir,
+            taskId: taskId,
+          ),
+        ),
+        // **用 overrideWith 而不是 overrideWithValue**：横幅和「能否开工」都读它，
+        // 存成一个启动时算好的值的话，用户装好 ffmpeg 后横幅不消失、功能也不
+        // 恢复，只能重启 app。这样写才能在清掉未命中缓存后 invalidate 重算
+        mediaToolsStatusProvider.overrideWith(
+          (ref) => sharedMediaToolsLocator.preflight(),
+        ),
+        taskArtifactCleanerProvider.overrideWithValue(artifactCleaner),
+        // 设置页：扫描/体检都用真实目录与真实进程，注入点集中在这里
+        cacheScannerProvider.overrideWithValue(CacheScanner(dataDir: dataDir)),
+        environmentProbeProvider.overrideWithValue(
+          defaultEnvironmentProbe(
+            resolveMediaTools: sharedMediaToolsLocator.preflight,
+            credentials: credentials,
+          ),
+        ),
+        miaoaAccountServiceProvider.overrideWithValue(MiaoaAccountService()),
+        miaoaAuthServiceProvider.overrideWithValue(MiaoaAuthService()),
+        toolInstallerProvider.overrideWithValue(ToolInstaller()),
+        dataDirProvider.overrideWithValue(dataDir),
+        // 「生成配音」：凭据齐了才给工厂，否则工作台把按钮禁用并说明原因，
+        // 而不是让用户点了之后撞一个网络错误
+        // 听一段上传的配音说了什么：和命令行那条路同一份实现
+        voiceWordsProvider.overrideWithValue(
+          credentials.speechAppId.isEmpty
+              ? null
+              : (audio) => transcribeVoiceWords(
                   VolcanoAsrProvider(
                     appId: credentials.speechAppId,
                     accessToken: credentials.speechAccessToken,
                   ),
                   audio,
                 ),
-      ),
-      voiceSwapFactoryProvider.overrideWithValue(defaultVoiceSwapFactory(
-          credentials: credentials, dataDir: dataDir)),
-      // 矩阵导出：真实 ffmpeg + 真实下载。素材缓存按任务分目录，
-      // 清理缓存时能整目录带走
-      // 预览音轨：与导出共用同一个混音器，听到的就是要交付的
-      // 选中配乐就把它下到本地：和预览/导出读同一份缓存
-      bgmFetcherProvider.overrideWithValue(
-          (taskId, m) => bgmCache(dataDir, taskId).fetch(m)),
-      // 挑素材时就把本体下到本地：和导出读同一个缓存目录，导出时不必再下
-      materialFetcherProvider.overrideWithValue((taskId, id) =>
-          MaterialDownloader(
+        ),
+        voiceSwapFactoryProvider.overrideWithValue(
+          defaultVoiceSwapFactory(credentials: credentials, dataDir: dataDir),
+        ),
+        // 矩阵导出：真实 ffmpeg + 真实下载。素材缓存按任务分目录，
+        // 清理缓存时能整目录带走
+        // 预览音轨：与导出共用同一个混音器，听到的就是要交付的
+        // 选中配乐就把它下到本地：和预览/导出读同一份缓存
+        bgmFetcherProvider.overrideWithValue(
+          (taskId, m) => bgmCache(dataDir, taskId).fetch(m),
+        ),
+        // 挑素材时就把本体下到本地：和导出读同一个缓存目录，导出时不必再下
+        materialFetcherProvider.overrideWithValue(
+          (taskId, id) => MaterialDownloader(
             content: MiaoaContentService(),
             cacheDir: TaskMedia(dataDir: dataDir, taskId: taskId).materialsDir,
-          ).fetch(id)),
-      // 预览与导出共用同一份素材人声：听到的就是要交付的
-      // （工具没装时 vocalsOf 一律返回 null，界面据此如实说明）
-      materialSeparatorProvider.overrideWithValue(
-          (taskId, path) => materialVocals(dataDir, taskId).vocalsOf(path)),
-      exportRunnerFactoryProvider
-          .overrideWithValue((taskId, subtitle) => ExportRunner(
+          ).fetch(id),
+        ),
+        // 预览与导出共用同一份素材人声：听到的就是要交付的
+        // （工具没装时 vocalsOf 一律返回 null，界面据此如实说明）
+        materialSeparatorProvider.overrideWithValue(
+          (taskId, path) => materialVocals(dataDir, taskId).vocalsOf(path),
+        ),
+        exportRunnerFactoryProvider.overrideWithValue(
+          (taskId, subtitle) => ExportRunner(
             run: const ResolvingProcessRunner().call,
             subtitleStyle: subtitle,
             workDir: Directory(p.join(dataDir.path, 'export_work', taskId)),
@@ -207,26 +231,31 @@ Future<void> main(List<String> args) async {
             separateMaterial: materialVocals(dataDir, taskId).vocalsOf,
             // 镜头替换要按候选的真实时长算变速倍率
             probeDurationMs: (path) async => (await FfprobeService(
-                    run: const ResolvingProcessRunner().call)
-                .probe(path))
-                .duration
-                .inMilliseconds,
+              run: const ResolvingProcessRunner().call,
+            ).probe(path)).duration.inMilliseconds,
             fetchMaterial: MaterialDownloader(
               content: MiaoaContentService(),
-              cacheDir:
-                  TaskMedia(dataDir: dataDir, taskId: taskId).materialsDir,
+              cacheDir: TaskMedia(
+                dataDir: dataDir,
+                taskId: taskId,
+              ).materialsDir,
             ).fetch,
-          )),
-    ],
-    child: const IshkafelApp(),
-  ));
+          ),
+        ),
+      ],
+      child: const IshkafelApp(),
+    ),
+  );
 }
 
 /// 清掉归属不到任何现存任务的产物。
 ///
 /// 失败不阻断启动：读不出任务清单时**一个都不删**——宁可留着占地方，
 /// 也不能因为清单是空的就把用户所有素材当孤儿清了。
-Future<void> _sweepOrphans(FileTaskRepository repository, Directory dataDir) async {
+Future<void> _sweepOrphans(
+  FileTaskRepository repository,
+  Directory dataDir,
+) async {
   try {
     final tasks = await repository.findAll();
     final artifacts = TaskArtifacts(dataDir);

@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../ffmpeg/process_runner.dart';
 import 'subtitle_overlay.dart';
+import 'subtitle_renderer_protocol.dart';
 import 'subtitle_style.dart';
 
 /// 把字幕行渲成透明 PNG——文字交给 macOS 自带的系统渲染（AppKit，经
@@ -14,8 +15,14 @@ import 'subtitle_style.dart';
 /// osascript 进程渲完这一批缺的，不是一句一个进程。
 class SubtitleRasterizer {
   final ProcessRunner run;
+  final String operatingSystem;
+  final String? rendererExecutable;
 
-  SubtitleRasterizer({this.run = systemProcessRunner});
+  SubtitleRasterizer({
+    this.run = systemProcessRunner,
+    String? operatingSystem,
+    this.rendererExecutable,
+  }) : operatingSystem = operatingSystem ?? Platform.operatingSystem;
 
   /// 同一个工作目录上的渲染要**排队**。
   ///
@@ -47,12 +54,15 @@ class SubtitleRasterizer {
 
     final key = outDir.absolute.path;
     final ahead = _queues[key] ?? Future<void>.value();
-    final mine = ahead.then((_) => _rasterize(
+    final mine = ahead.then(
+      (_) => _rasterize(
         lines: lines,
         width: width,
         height: height,
         style: style,
-        outDir: outDir));
+        outDir: outDir,
+      ),
+    );
     // 队列只记「轮到下一个没有」，失败不能把后面的人一起带走
     _queues[key] = mine.then((_) {}, onError: (_) {});
     try {
@@ -69,62 +79,50 @@ class SubtitleRasterizer {
     required SubtitleStyle style,
     required Directory outDir,
   }) async {
-
     final blur = style.preset == SubtitlePreset.blurBox;
     final entries = <({String out, SubtitleLine line})>[];
-    final missing = <Map<String, String>>[];
+    final missing = <SubtitleRendererItem>[];
     for (final line in lines) {
       final key = _fingerprint(line.text, width, height, style);
       final out = p.join(outDir.path, 'subimg_$key.png');
       entries.add((out: out, line: line));
       // 毛玻璃要 sidecar 文本框；两样缺一样都算没渲过
-      if (!File(out).existsSync() ||
-          (blur && !File('$out.box').existsSync())) {
-        missing.add({'text': line.text, 'out': out});
+      if (!File(out).existsSync() || (blur && !File('$out.box').existsSync())) {
+        missing.add(SubtitleRendererItem(text: line.text, out: out));
       }
     }
     if (missing.isEmpty) return _collect(entries, blur);
 
     final stamp = '${pid}_${_seq++}';
-    final script = File(p.join(outDir.path, 'subrender_$stamp.js'))
-      ..writeAsStringSync(_jxaScript);
-    final custom = style.colorHex;
-    final (r, g, b) = custom != null
-        ? (
-            int.parse(custom.substring(0, 2), radix: 16) / 255,
-            int.parse(custom.substring(2, 4), radix: 16) / 255,
-            int.parse(custom.substring(4, 6), radix: 16) / 255,
-          )
-        : switch (style.preset) {
-            SubtitlePreset.yellowOutline => (1.0, 0.85, 0.0),
-            _ => (1.0, 1.0, 1.0),
-          };
     final spec = File(p.join(outDir.path, 'subrender_spec_$stamp.json'))
-      ..writeAsStringSync(jsonEncode({
-        'width': width,
-        'height': height,
-        'fontSize': (height * style.fontRatio).round(),
-        'marginV': (height * style.bottomRatio).round(),
-        // 描边占字号的百分比。对标原片字幕的重描边（粗黑边 + 实心白字，
-        // 见 2026-08-18 用户给的样张）；底条/毛玻璃有衬底，描边收细
-        'strokePercent': style.preset == SubtitlePreset.whiteBox ||
-                style.preset == SubtitlePreset.blurBox
-            ? 3
-            : 9,
-        'r': r,
-        'g': g,
-        'b': b,
-        'box': style.preset == SubtitlePreset.whiteBox,
-        // 毛玻璃：不画底，把文本框写进 <out>.box（ffmpeg 顶部原点坐标），
-        // 模糊由滤镜对那块画面做
-        'emitBox': blur,
-        'items': missing,
-      }));
+      ..writeAsStringSync(
+        jsonEncode(
+          buildSubtitleRendererSpec(
+            width: width,
+            height: height,
+            style: style,
+            items: missing,
+          ),
+        ),
+      );
 
-    final result =
-        await run('osascript', ['-l', 'JavaScript', script.path, spec.path]);
+    File? script;
+    late final String executable;
+    late final List<String> arguments;
+    if (operatingSystem == 'macos') {
+      script = File(p.join(outDir.path, 'subrender_$stamp.js'))
+        ..writeAsStringSync(_jxaScript);
+      executable = 'osascript';
+      arguments = ['-l', 'JavaScript', script.path, spec.path];
+    } else {
+      executable =
+          rendererExecutable ??
+          resolveSubtitleRendererExecutable(operatingSystem: operatingSystem);
+      arguments = [spec.path];
+    }
+    final result = await run(executable, arguments);
     // 中间产物用完即弃——留在工作目录里只会越堆越多，且谁也不读
-    for (final f in [script, spec]) {
+    for (final f in [?script, spec]) {
       try {
         if (f.existsSync()) f.deleteSync();
       } catch (_) {
@@ -132,23 +130,28 @@ class SubtitleRasterizer {
       }
     }
     if (result.exitCode != 0) {
-      throw StateError('字幕渲染失败（osascript exit=${result.exitCode}）：'
-          '${result.stderr}'.trim());
+      throw StateError(
+        '字幕渲染失败（$executable exit=${result.exitCode}）：'
+                '${result.stderr}'
+            .trim(),
+      );
     }
     final bad = [
       for (final m in missing)
-        if (!File(m['out']!).existsSync()) m['text'],
+        if (!File(m.out).existsSync()) m.text,
     ];
     if (bad.isNotEmpty) {
       // 说清是谁没干活、人能做什么。以前这里只有一句「没有产出图片」，
       // 拿到的人不知道图该由谁产出、也不知道该去修什么
+      final recovery = operatingSystem == 'macos'
+          ? '请人试一次：终端里跑 `osascript -l JavaScript -e "1+1"`，'
+                '若被拦，去「系统设置 → 隐私与安全性 → 自动化」里给终端放行。'
+          : 'Windows 字幕辅助进程没有产出完整结果，请检查安装目录中的 '
+                '`ishkafel_renderer.exe` 与应用日志。';
       throw StateError(
-          '字幕图没渲出来（${bad.length} 句，第一句是「${bad.first}」）。'
-          '字幕是交给 macOS 系统渲染的（osascript 调 AppKit），'
-          '它这次报了成功却没落下文件。'
-          '请人试一次：终端里跑 `osascript -l JavaScript -e "1+1"`，'
-          '若被拦，去「系统设置 → 隐私与安全性 → 自动化」里给终端放行；'
-          '（这条报错以前只说「没有产出图片」，拿到的人无从下手。）');
+        '字幕图没渲出来（${bad.length} 句，第一句是「${bad.first}」）。'
+        '$recovery',
+      );
     }
     return _collect(entries, blur);
   }
@@ -156,7 +159,9 @@ class SubtitleRasterizer {
   /// 组装结果；毛玻璃预设从 sidecar 读回文本框。sidecar 读不出时该句
   /// 退化为无遮罩（字仍带细描边，可读）——不因一块框丢一句字幕
   static List<SubtitleOverlayImage> _collect(
-      List<({String out, SubtitleLine line})> entries, bool blur) {
+    List<({String out, SubtitleLine line})> entries,
+    bool blur,
+  ) {
     return List.unmodifiable([
       for (final e in entries)
         SubtitleOverlayImage(
@@ -180,7 +185,11 @@ class SubtitleRasterizer {
   }
 
   static String _fingerprint(
-          String text, int width, int height, SubtitleStyle style) =>
+    String text,
+    int width,
+    int height,
+    SubtitleStyle style,
+  ) =>
       '${text.hashCode.toRadixString(16)}_${width}x$height'
       '_${style.fingerprint.hashCode.toRadixString(16)}';
 }

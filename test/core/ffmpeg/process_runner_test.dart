@@ -62,8 +62,7 @@ void main() {
     /// 真机事故（2026-09-04）：点「重新分离」报「未检测到人声分离工具」，
     /// 可工具装得好好的。缺的是它自己要调的 **ffmpeg**——GUI 进程继承的
     /// launchd PATH 里没有 Homebrew，第三方程序绕不开这一条。
-    test('起子进程时把装工具的目录交给它——第三方程序自己要去 PATH 上找 ffmpeg',
-        () async {
+    test('起子进程时把装工具的目录交给它——第三方程序自己要去 PATH 上找 ffmpeg', () async {
       final process = _FakeProcess();
       Map<String, String>? handed;
       final invoker = TimeoutProcessInvoker(
@@ -78,7 +77,16 @@ void main() {
       await invoker('audio-separator', const []);
 
       expect(handed?['PATH'], isNotNull, reason: '不交 PATH 等于让它自己碰运气');
-      expect(handed!['PATH'], contains('/opt/homebrew/bin'));
+      if (Platform.isWindows) {
+        expect(handed!['PATH'], contains(';'));
+        expect(
+          handed!['PATH'],
+          isNot(contains('C;\\')),
+          reason: 'Windows 盘符不能被冒号分隔逻辑拆坏',
+        );
+      } else {
+        expect(handed!['PATH'], contains('/opt/homebrew/bin'));
+      }
     });
 
     test('超时后杀掉子进程并抛出带中文说明的异常', () async {
@@ -90,8 +98,13 @@ void main() {
 
       await expectLater(
         invoker('ffmpeg', const ['-i', 'x.mp4']),
-        throwsA(isA<FfmpegException>().having((e) => e.message, 'message',
-            allOf(contains('超时'), contains('ffmpeg')))),
+        throwsA(
+          isA<FfmpegException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('超时'), contains('ffmpeg')),
+          ),
+        ),
       );
       expect(process.killCount, 1, reason: '必须杀掉卡住的子进程，避免永久挂起');
     });
@@ -106,6 +119,7 @@ void main() {
       final invoked = <String>[];
       final runner = ResolvingProcessRunner(
         locator: MediaToolsLocator(
+          operatingSystem: 'macos',
           probe: (path) => path.startsWith('/opt/homebrew/bin/'),
           lookupOnPath: (_) => null,
         ),
@@ -123,15 +137,22 @@ void main() {
 
     test('工具缺失时抛中文提示的 FfmpegException，且不启动任何子进程', () async {
       final runner = ResolvingProcessRunner(
-        locator:
-            MediaToolsLocator(probe: (_) => false, lookupOnPath: (_) => null),
+        locator: MediaToolsLocator(
+          probe: (_) => false,
+          lookupOnPath: (_) => null,
+        ),
         invoke: (_, _) async => fail('工具缺失时不应启动子进程'),
       );
 
       await expectLater(
         runner('ffprobe', const []),
-        throwsA(isA<FfmpegException>().having(
-            (e) => e.message, 'message', allOf(contains('ffprobe'), contains('未找到')))),
+        throwsA(
+          isA<FfmpegException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('ffprobe'), contains('未找到')),
+          ),
+        ),
       );
     });
 
@@ -151,6 +172,31 @@ void main() {
       await runner('/custom/bin/ffmpeg', const []);
 
       expect(invoked, ['/custom/bin/ffmpeg']);
+    });
+
+    test('Windows 盘符和 UNC 绝对路径同样直接透传', () async {
+      final invoked = <String>[];
+      final runner = ResolvingProcessRunner(
+        locator: MediaToolsLocator(
+          probe: (_) => fail('绝对路径无需解析'),
+          lookupOnPath: (_) => fail('绝对路径无需解析'),
+        ),
+        invoke: (executable, _) async {
+          invoked.add(executable);
+          return ProcessResult(1, 0, '', '');
+        },
+      );
+
+      await runner(
+        r'C:\Program Files\Ishkafel\ishkafel_renderer.exe',
+        const [],
+      );
+      await runner(r'\\server\share\ffmpeg.exe', const []);
+
+      expect(invoked, [
+        r'C:\Program Files\Ishkafel\ishkafel_renderer.exe',
+        r'\\server\share\ffmpeg.exe',
+      ]);
     });
   });
 }

@@ -5,20 +5,23 @@ import 'dart:io';
 import 'media_tools_locator.dart';
 
 /// 子进程执行抽象（生产用 [systemProcessRunner]，测试注入假实现）
-typedef ProcessRunner = Future<ProcessResult> Function(
-    String executable, List<String> args);
+typedef ProcessRunner =
+    Future<ProcessResult> Function(String executable, List<String> args);
 
 /// 真正拉起子进程的底层动作（注入点：测试可替换，无需真实二进制）
-typedef ProcessInvoker = Future<ProcessResult> Function(
-    String executable, List<String> args);
+typedef ProcessInvoker =
+    Future<ProcessResult> Function(String executable, List<String> args);
 
 /// 子进程启动器（注入点：测试用假 Process，无需真实二进制）。
 ///
 /// 带上 [environment] 是因为我们拉起的**第三方程序**（audio-separator）
 /// 自己还要去 PATH 上找 ffmpeg，见 [childProcessPath]
-typedef ProcessStarter = Future<Process> Function(
-    String executable, List<String> args,
-    {Map<String, String>? environment});
+typedef ProcessStarter =
+    Future<Process> Function(
+      String executable,
+      List<String> args, {
+      Map<String, String>? environment,
+    });
 
 /// 全局共享的工具定位器：解析结果缓存在实例上，各服务复用同一份避免重复探测
 final MediaToolsLocator sharedMediaToolsLocator = MediaToolsLocator();
@@ -34,18 +37,18 @@ const Duration defaultProcessTimeout = Duration(minutes: 10);
 
 /// 默认实现：解析绝对路径 + 带超时执行
 Future<ProcessResult> systemProcessRunner(
-        String executable, List<String> args) =>
-    const ResolvingProcessRunner()(executable, args);
+  String executable,
+  List<String> args,
+) => const ResolvingProcessRunner()(executable, args);
 
 /// 按需定制超时的执行器工厂（仍是 [ProcessRunner]，可直接注入各服务）
 ProcessRunner timeoutProcessRunner({
   Duration timeout = defaultProcessTimeout,
   MediaToolsLocator? locator,
-}) =>
-    ResolvingProcessRunner(
-      locator: locator,
-      invoke: TimeoutProcessInvoker(timeout: timeout).call,
-    ).call;
+}) => ResolvingProcessRunner(
+  locator: locator,
+  invoke: TimeoutProcessInvoker(timeout: timeout).call,
+).call;
 
 /// 带超时的子进程执行：Process.run 没有超时，ffmpeg 一旦卡住就永久挂起，
 /// 任务随之永远停在「分析中」。这里改用 Process.start + exitCode.timeout，
@@ -63,14 +66,21 @@ class TimeoutProcessInvoker {
     // 把装着工具的目录交到子进程手上。本 app 自己调 ffmpeg 早就用绝对路径
     // 绕开了这个坑，但第三方程序绕不开——它自己要去 PATH 上找（见
     // [childProcessPath] 里记的那次真机事故）
-    final process = await starter(executable, args,
-        environment: {'PATH': childProcessPath()});
+    final process = await starter(
+      executable,
+      args,
+      environment: {'PATH': childProcessPath()},
+    );
     final stdoutFuture = _collect(process.stdout);
     final stderrFuture = _collect(process.stderr);
     try {
       final exitCode = await process.exitCode.timeout(timeout);
       return ProcessResult(
-          process.pid, exitCode, await stdoutFuture, await stderrFuture);
+        process.pid,
+        exitCode,
+        await stdoutFuture,
+        await stderrFuture,
+      );
     } on TimeoutException {
       process.kill(ProcessSignal.sigkill);
       // 已挂起的输出收集不再有人接收，显式忽略避免未处理异常
@@ -123,7 +133,11 @@ class ResolvingProcessRunner {
 
   /// 已经是绝对路径时直接透传，不做解析
   String _resolve(String executable) {
-    if (executable.startsWith('/')) return executable;
+    if (executable.startsWith('/') ||
+        executable.startsWith(r'\\') ||
+        RegExp(r'^[A-Za-z]:[\\/]').hasMatch(executable)) {
+      return executable;
+    }
     final resolved = _locator.resolve(executable);
     if (resolved == null) throw MediaToolMissingException(executable);
     return resolved;

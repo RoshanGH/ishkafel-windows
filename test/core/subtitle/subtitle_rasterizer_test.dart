@@ -22,7 +22,10 @@ void main() {
 
   /// 假的 osascript：**进程启动是要时间的**，读 spec 发生在启动之后——
   /// 覆盖窗口就开在这里
-  Future<ProcessResult> lateReadingOsascript(String bin, List<String> args) async {
+  Future<ProcessResult> lateReadingOsascript(
+    String bin,
+    List<String> args,
+  ) async {
     final specPath = args.last;
     await Future<void>.delayed(const Duration(milliseconds: 30));
     final spec = jsonDecode(File(specPath).readAsStringSync());
@@ -33,13 +36,14 @@ void main() {
   }
 
   List<SubtitleLine> lines(List<String> texts) => [
-        for (var i = 0; i < texts.length; i++)
-          SubtitleLine(text: texts[i], startMs: i * 1000, endMs: i * 1000 + 900),
-      ];
+    for (var i = 0; i < texts.length; i++)
+      SubtitleLine(text: texts[i], startMs: i * 1000, endMs: i * 1000 + 900),
+  ];
 
   test('同一个目录上并行渲，谁都不许把别人的清单覆盖掉', () async {
     final r = SubtitleRasterizer(run: lateReadingOsascript);
-    Future<List<SubtitleOverlayImage>> render(List<String> texts) => r.rasterize(
+    Future<List<SubtitleOverlayImage>> render(List<String> texts) =>
+        r.rasterize(
           lines: lines(texts),
           width: 1080,
           height: 1920,
@@ -53,33 +57,79 @@ void main() {
       render(['早就跟你们说了']),
     ]);
 
-    expect(results[0], hasLength(3),
-        reason: '三条方案全灭就是从这儿来的：它要的三张图，'
-            '被后来者的一张图清单顶掉了两张');
+    expect(
+      results[0],
+      hasLength(3),
+      reason:
+          '三条方案全灭就是从这儿来的：它要的三张图，'
+          '被后来者的一张图清单顶掉了两张',
+    );
     for (final img in results[0]) {
-      expect(File(img.pngPath).existsSync(), isTrue,
-          reason: '${img.pngPath} 没渲出来');
+      expect(
+        File(img.pngPath).existsSync(),
+        isTrue,
+        reason: '${img.pngPath} 没渲出来',
+      );
     }
   });
 
   test('渲过的不重渲——并行也只该起一次进程干活', () async {
     var calls = 0;
-    final r = SubtitleRasterizer(run: (bin, args) {
-      calls++;
-      return lateReadingOsascript(bin, args);
-    });
+    final r = SubtitleRasterizer(
+      run: (bin, args) {
+        calls++;
+        return lateReadingOsascript(bin, args);
+      },
+    );
     Future<void> render() => r.rasterize(
-          lines: lines(['早就跟你们说了']),
-          width: 1080,
-          height: 1920,
-          style: const SubtitleStyle(),
-          outDir: dir,
-        );
+      lines: lines(['早就跟你们说了']),
+      width: 1080,
+      height: 1920,
+      style: const SubtitleStyle(),
+      outDir: dir,
+    );
 
     await Future.wait([render(), render(), render()]);
 
-    expect(calls, 1,
-        reason: '三次要的是同一张图。串起来之后后两次应该直接命中磁盘上的，'
-            '起三个 osascript 是白烧时间');
+    expect(
+      calls,
+      1,
+      reason:
+          '三次要的是同一张图。串起来之后后两次应该直接命中磁盘上的，'
+          '起三个 osascript 是白烧时间',
+    );
+  });
+
+  test('Windows 只调用同协议 renderer，不调用 osascript', () async {
+    String? executable;
+    List<String>? arguments;
+    final rasterizer = SubtitleRasterizer(
+      operatingSystem: 'windows',
+      rendererExecutable: r'C:\Ishkafel\ishkafel_renderer.exe',
+      run: (bin, args) async {
+        executable = bin;
+        arguments = args;
+        final spec = jsonDecode(File(args.single).readAsStringSync()) as Map;
+        expect(spec['protocolVersion'], 1);
+        for (final item in spec['items'] as List) {
+          File(
+            (item as Map)['out'] as String,
+          ).writeAsBytesSync(const [1, 2, 3]);
+        }
+        return ProcessResult(7, 0, '', '');
+      },
+    );
+
+    final images = await rasterizer.rasterize(
+      lines: lines(['Windows 字幕']),
+      width: 1080,
+      height: 1920,
+      style: SubtitleStyle.standard,
+      outDir: dir,
+    );
+
+    expect(executable, r'C:\Ishkafel\ishkafel_renderer.exe');
+    expect(arguments, hasLength(1));
+    expect(images.single.pngPath, endsWith('.png'));
   });
 }

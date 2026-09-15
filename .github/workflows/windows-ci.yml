@@ -34,6 +34,9 @@ jobs:
         run: dart build cli
       - name: Build Windows app
         run: flutter build windows --release
+      - name: Smoke-test subtitle renderer
+        shell: pwsh
+        run: ./scripts/windows/test_renderer.ps1 -Mode Release
       - uses: actions/upload-artifact@v4
         with:
           name: ishkafel-windows-${{ github.sha }}

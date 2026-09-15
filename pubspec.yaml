@@ -32,8 +32,13 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/fonts/
+  fonts:
+    - family: Ishkafel Subtitle
+      fonts:
+        - asset: assets/fonts/NotoSansCJKsc-Medium.otf
+          weight: 500
 
 # CLI 入口：`dart compile exe bin/ishkafel.dart`
 executables:
   ishkafel: ishkafel
-
