@@ -1,0 +1,84 @@
+name: Sync Mac upstream
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: sync-macos-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Configure Git identity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Fetch Mac upstream
+        run: |
+          git remote add upstream https://github.com/RoshanGH/ishkafel.git
+          git fetch upstream main
+          git fetch origin sync/macos-main:refs/remotes/origin/sync/macos-main || true
+      - name: Merge upstream and open pull request
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git merge-base --is-ancestor upstream/main origin/main; then
+            echo 'Windows main already contains upstream/main.'
+            exit 0
+          fi
+
+          git switch -C sync/macos-main origin/main
+          if git merge --no-edit upstream/main; then
+            git push --force-with-lease origin HEAD:refs/heads/sync/macos-main
+
+            body=$(cat <<'BODY'
+          ## Mac upstream sync
+
+          This PR merges the latest `RoshanGH/ishkafel` `main` into the Windows repository.
+
+          - Windows CI must pass before merge.
+          - Platform differences require human review.
+          - This workflow never merges the PR automatically.
+          BODY
+          )
+            pr_number=$(gh pr list --base main --head sync/macos-main --state open --json number --jq '.[0].number // empty')
+            if [[ -n "$pr_number" ]]; then
+              gh pr edit "$pr_number" --body "$body"
+            else
+              gh pr create --base main --head sync/macos-main --title 'sync: merge Mac main into Windows' --body "$body"
+            fi
+            exit 0
+          fi
+
+          git merge --abort
+          gh label create upstream-sync --color D93F0B --description 'Mac upstream requires Windows adaptation' --force
+          issue_body=$(cat <<'BODY'
+          The scheduled upstream sync cannot merge `RoshanGH/ishkafel:main` into the Windows repository.
+
+          Resolve the conflict on a sync branch, preserve every registered Windows platform difference, and rerun Windows CI before merging.
+          BODY
+          )
+          issue_number=$(gh issue list --state open --label upstream-sync --search 'Mac 主项目更新需要人工适配 in:title' --json number --jq '.[0].number // empty')
+          if [[ -n "$issue_number" ]]; then
+            gh issue edit "$issue_number" --body "$issue_body"
+          else
+            gh issue create --title 'Mac 主项目更新需要人工适配' --label upstream-sync --body "$issue_body"
+          fi
+          exit 1

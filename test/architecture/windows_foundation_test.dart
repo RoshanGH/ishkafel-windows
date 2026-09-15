@@ -41,6 +41,7 @@ void main() {
       'scripts/windows/check_environment.ps1',
       'scripts/windows/build_app.ps1',
       'scripts/windows/build_cli.ps1',
+      'scripts/windows/sync_upstream.ps1',
     ]) {
       final bytes = File(path).readAsBytesSync();
       final hasUtf8Bom = bytes.length >= 3 &&
@@ -61,5 +62,19 @@ void main() {
     expect(workflow, contains('flutter test'));
     expect(workflow, contains('dart build cli'));
     expect(workflow, contains('flutter build windows --release'));
+  });
+
+  test('Mac 同步只能开 PR，不能自动合并', () {
+    final local =
+        File('scripts/windows/sync_upstream.ps1').readAsStringSync();
+    final workflow =
+        File('.github/workflows/sync-upstream.yml').readAsStringSync();
+    expect(local, contains('git fetch upstream main'));
+    expect(local, contains('git merge --no-edit upstream/main'));
+    expect(workflow, contains('schedule:'));
+    expect(workflow, contains('workflow_dispatch:'));
+    expect(workflow, contains('gh pr create'));
+    expect(workflow, isNot(contains('gh pr merge')),
+        reason: '上游更新必须通过 Windows CI 和人工复核');
   });
 }
