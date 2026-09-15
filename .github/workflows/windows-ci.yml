@@ -1,0 +1,42 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [main, 'sync/**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Build CLI
+        run: dart build cli
+      - name: Build Windows app
+        run: flutter build windows --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ishkafel-windows-${{ github.sha }}
+          path: build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 7

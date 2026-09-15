@@ -52,4 +52,14 @@ void main() {
           reason: '$path 必须带 UTF-8 BOM，或只含 ASCII');
     }
   });
+
+  test('Windows CI 同时守住 analyze、test、CLI 和 app', () {
+    final workflow =
+        File('.github/workflows/windows-ci.yml').readAsStringSync();
+    expect(workflow, contains("flutter-version: '3.47.4'"));
+    expect(workflow, contains('flutter analyze'));
+    expect(workflow, contains('flutter test'));
+    expect(workflow, contains('dart build cli'));
+    expect(workflow, contains('flutter build windows --release'));
+  });
 }
