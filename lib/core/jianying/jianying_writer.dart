@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../script/script_doc.dart';
 import '../subtitle/subtitle_style.dart';
+import '../platform/platform_shell.dart';
 import 'jianying_draft.dart';
 import 'jianying_materials.dart';
 import 'jianying_plan.dart';
@@ -42,20 +43,96 @@ class JianyingDraftResult {
   });
 }
 
-/// 剪映的本地草稿根目录（macOS）
-String defaultJianyingRoot() => p.join(
-    Platform.environment['HOME'] ?? '',
-    'Movies',
+/// 剪映的本地草稿根目录。Windows 与 macOS 的尾部结构相同，用户根目录不同。
+String defaultJianyingRoot({
+  String? operatingSystem,
+  Map<String, String>? environment,
+}) {
+  final os = operatingSystem ?? Platform.operatingSystem;
+  final env = environment ?? Platform.environment;
+  final rootName = os == 'windows' ? 'LOCALAPPDATA' : 'HOME';
+  final root = env[rootName]?.trim();
+  if (root == null || root.isEmpty) {
+    throw StateError('读不到 $rootName，无法定位剪映草稿目录');
+  }
+  final context = p.Context(
+    style: os == 'windows' ? p.Style.windows : p.Style.posix,
+  );
+  return context.joinAll([
+    root,
+    if (os != 'windows') 'Movies',
     'JianyingPro',
     'User Data',
     'Projects',
-    'com.lveditor.draft');
+    'com.lveditor.draft',
+  ]);
+}
 
 /// 剪映在 macOS 上的 app 名（专业版一直叫这个，跟界面上显示的名字不一样）。
 ///
 /// 只是把它拉起来——剪映**没有**「打开指定草稿」的外部通道，草稿名得交代给人，
 /// 让他自己去「本地草稿」里点。
 const String jianyingAppName = 'VideoFusion-macOS';
+
+String? resolveJianyingExecutable({
+  Map<String, String>? environment,
+  bool Function(String path)? exists,
+  PlatformShell? shell,
+}) {
+  final env = environment ?? Platform.environment;
+  final has = exists ?? (path) => File(path).existsSync();
+  final explicit = env['ISHKAFEL_JIANYING_APP']?.trim();
+  if (explicit != null && explicit.isNotEmpty && has(explicit)) {
+    return explicit;
+  }
+
+  final onPath = shell?.lookupOnPath('JianyingPro.exe');
+  if (onPath != null && has(onPath)) return onPath;
+
+  final context = p.Context(style: p.Style.windows);
+  final candidates = <String>[];
+  void addCandidate(String? root, [String? child]) {
+    if (root == null || root.trim().isEmpty) return;
+    candidates.add(context.joinAll([
+      root,
+      'JianyingPro',
+      ?child,
+      'JianyingPro.exe',
+    ]));
+  }
+
+  addCandidate(env['LOCALAPPDATA']);
+  addCandidate(env['LOCALAPPDATA'], 'Apps');
+  addCandidate(env['ProgramFiles']);
+  addCandidate(env['ProgramFiles(x86)']);
+  return candidates.where(has).firstOrNull;
+}
+
+Future<void> launchJianying({
+  PlatformShell? shell,
+  Map<String, String>? environment,
+  bool Function(String path)? exists,
+}) async {
+  final platform = shell ?? PlatformShell();
+  if (platform.operatingSystem != 'windows') {
+    return platform.launchApplication(macOSName: jianyingAppName);
+  }
+  final executable = resolveJianyingExecutable(
+    environment: environment,
+    exists: exists,
+    shell: platform,
+  );
+  if (executable == null) {
+    throw StateError(
+      '找不到剪映专业版。请先安装剪映，或设置 '
+      r'ISHKAFEL_JIANYING_APP=C:\完整路径\JianyingPro.exe',
+    );
+  }
+  return platform.launchApplication(
+    macOSName: jianyingAppName,
+    windowsExecutable: executable,
+  );
+}
 
 class JianyingWriter {
   JianyingWriter({

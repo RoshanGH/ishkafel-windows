@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../app/theme/app_typography.dart';
 import '../../core/agent_skill/agent_skill_doc.dart';
 import '../../core/agent_skill/skill_installer.dart';
+import '../../core/platform/platform_paths.dart';
 import 'settings_providers.dart';
 import 'settings_widgets.dart';
 
@@ -52,13 +54,15 @@ class _AgentSkillCardState extends ConsumerState<AgentSkillCard> {
   /// 存成 .md 文件，方便发给别人（微信、邮件）
   Future<void> _saveFile() async {
     try {
-      final file = File(
-          '${Platform.environment['HOME'] ?? '.'}/Desktop/ishkafel-说明书.md');
+      final file = File(p.join(
+        PlatformPaths().desktopDirectory,
+        'ishkafel-说明书.md',
+      ));
       file.writeAsStringSync(_installer.markdownForSharing);
       if (!mounted) return;
       setState(() {
         _failed = false;
-        _message = '已存到桌面：${file.path.split('/').last}';
+        _message = '已存到桌面：${p.basename(file.path)}';
       });
     } catch (e) {
       if (!mounted) return;

@@ -24,6 +24,14 @@ class PlatformPaths {
         style: operatingSystem == 'windows' ? p.Style.windows : p.Style.posix,
       );
 
+  String get userHome =>
+      _required(operatingSystem == 'windows' ? 'USERPROFILE' : 'HOME');
+
+  String get videosDirectory =>
+      _path.join(userHome, operatingSystem == 'macos' ? 'Movies' : 'Videos');
+
+  String get desktopDirectory => _path.join(userHome, 'Desktop');
+
   String get applicationSupport => switch (operatingSystem) {
         'windows' => _path.join(
             _required('APPDATA'), ishkafelCompanyName, ishkafelProductName),

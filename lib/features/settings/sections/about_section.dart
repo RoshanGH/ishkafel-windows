@@ -6,20 +6,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../app/theme/app_spacing.dart';
 import '../../../core/log/app_log.dart';
+import '../../../core/platform/platform_shell.dart';
 import '../settings_providers.dart';
 import '../product_owner_card.dart';
 import '../update_card.dart';
 import '../settings_widgets.dart';
 
-/// 在访达中打开目录（注入点：测试不真的调起访达）
+/// 在系统文件管理器中打开目录（注入点：测试不真的拉起外部程序）
 typedef DirectoryRevealer = Future<void> Function(Directory dir);
 
-Future<void> _revealInFinder(Directory dir) async {
-  await Process.run('open', [dir.path]);
+Future<void> _revealInFileManager(Directory dir) async {
+  await PlatformShell().openPath(dir.path);
 }
 
 final directoryRevealerProvider =
-    Provider<DirectoryRevealer>((ref) => _revealInFinder);
+    Provider<DirectoryRevealer>((ref) => _revealInFileManager);
 
 /// 关于分区：版本号 + 数据目录。
 ///
@@ -51,7 +52,7 @@ class AboutSection extends ConsumerWidget {
                   : TextButton(
                       key: const Key('settings-reveal-data-dir'),
                       onPressed: () => _reveal(context, ref, dataDir),
-                      child: const Text('在访达中显示'),
+                      child: Text(PlatformShell().revealLabel),
                     ),
             ),
             const SettingsNote('任务数据、封面与分析中间产物都存放在这里。'

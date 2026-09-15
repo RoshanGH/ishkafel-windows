@@ -91,6 +91,7 @@ import '../export/export_dialog.dart';
 import '../../core/storage/agent_presence.dart';
 import '../../core/jianying/jianying_plan.dart' show JianyingPlanException;
 import '../../core/jianying/jianying_writer.dart';
+import '../../core/platform/platform_shell.dart';
 import '../../core/jianying/renew_jianying_plan.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../app/theme/app_typography.dart';
@@ -2608,15 +2609,22 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Process.run('open', ['-R', result.folder]),
-              child: const Text('在访达中显示'),
+              onPressed: () => PlatformShell().revealPath(result.folder),
+              child: Text(PlatformShell().revealLabel),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop();
                 // 只是把剪映拉起来——它没有「打开指定草稿」的通道，
                 // 草稿名在上面写着，人自己去列表里点
-                Process.run('open', ['-a', jianyingAppName]);
+                try {
+                  await launchJianying();
+                } catch (error) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(content: Text('$error')),
+                  );
+                }
               },
               child: const Text('打开剪映'),
             ),

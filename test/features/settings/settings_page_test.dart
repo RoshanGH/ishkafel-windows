@@ -336,6 +336,10 @@ void main() {
       expect(find.textContaining(appVersion), findsWidgets);
       expect(find.textContaining('/tmp/ishkafel_data'), findsOneWidget);
       expect(find.byKey(const Key('settings-reveal-data-dir')), findsOneWidget);
+      expect(
+        find.text(Platform.isWindows ? '在文件资源管理器中显示' : '在访达中显示'),
+        findsOneWidget,
+      );
     });
   });
 
