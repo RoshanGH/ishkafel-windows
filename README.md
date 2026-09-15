@@ -1,5 +1,26 @@
 # ishkafel
 
+> **Windows 独立项目：`RoshanGH/ishkafel-windows`**
+> Mac 主项目为 [`RoshanGH/ishkafel`](https://github.com/RoshanGH/ishkafel)，在本仓库中记为
+> `upstream`。每天的自动同步只创建 PR，必须经过 Windows CI 和人工复核，永不自动合并。
+
+本仓库保留与 Mac 主项目的共同 Git 历史，但拥有独立的 Windows 实现、发布节奏和问题跟踪。
+允许的平台差异只有 [`docs/platform-differences.md`](docs/platform-differences.md) 中登记的项目；
+未登记的产品行为、数据与视觉差异都视为 bug。
+
+## Windows 开发入口
+
+在 PowerShell 中运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\check_environment.ps1
+powershell -ExecutionPolicy Bypass -File scripts\windows\build_app.ps1 -Mode Release
+powershell -ExecutionPolicy Bypass -File scripts\windows\build_cli.ps1
+```
+
+正式 GUI 构建从项目根目录的 `.secrets/` 读取必需配置并在编译期注入；脚本不会回显密钥。
+本地检查 Mac 更新可运行 `scripts\windows\sync_upstream.ps1`，需要推送同步分支时增加 `-Push`。
+
 素材生产平台（替换裂变 / 脚本成片）：分析一条成片，按台词语义切分，从 miaoa 素材库检索
 同标签素材替换画面，本地合成导出多条变体。
 

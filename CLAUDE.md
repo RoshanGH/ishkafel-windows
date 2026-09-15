@@ -5,6 +5,20 @@
 素材生产平台（替换裂变 / 脚本成片）：Flutter 跨平台桌面 app + libmpv 预览 + 本地 ffmpeg 合成 + 云端 AI API + miaoa 素材检索。
 核心概念与流程见 `docs/术语表.md` 与 `docs/2026-07-29-项目方向与架构设计.md`。
 
+## Windows 独立仓库规则（强制）
+
+- 本仓库身份是 `RoshanGH/ishkafel-windows`：`origin` 指向 Windows 独立项目，
+  `upstream` 指向 Mac 主项目 `RoshanGH/ishkafel`。上游更新只通过同步 PR 吸收，绝不自动合并。
+- `docs/platform-differences.md` 是允许差异的唯一清单；**未登记的平台差异 = bug**。
+- Windows 原生交互遵循 Windows 11 桌面习惯；原文中的 Apple HIG 要求继续约束信息架构、
+  密度与品质，但不得覆盖标题栏、Ctrl 快捷键、资源管理器、文件对话框、滚轮和 DPI 等 Windows 契约。
+- 回复、注释与提交信息仍用中文；PowerShell 脚本必须兼容 Windows PowerShell 5.1 的文本编码。
+- 正式 Windows GUI 构建只能使用 `scripts/windows/build_app.ps1`，CLI 构建使用
+  `scripts/windows/build_cli.ps1`，不得在交付时裸跑 `flutter build windows` 冒充正式包。
+- 每个代码波结束都要运行 Windows 定向测试、`flutter analyze`、完整 `flutter test`、
+  Release 构建并真实启动应用验收。若已知 P0 尚未消红，要如实列出退出码，不得声称完成。
+- `.secrets` 的内容不得进入终端日志、Git、CI artifact、issue 或 PR；缺失时只报告文件名。
+
 ## 这个软件是干什么的（所有取舍的最终依据）
 
 **把一个熟练编导挑镜头的判断力，做成任何人都能调用的东西。**

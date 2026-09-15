@@ -77,4 +77,18 @@ void main() {
     expect(workflow, isNot(contains('gh pr merge')),
         reason: '上游更新必须通过 Windows CI 和人工复核');
   });
+
+  test('Windows 仓库身份与差异清单有唯一入口', () {
+    final readme = File('README.md').readAsStringSync();
+    final agent = File('CLAUDE.md').readAsStringSync();
+    final differences = File('docs/platform-differences.md').readAsStringSync();
+    expect(readme, contains('RoshanGH/ishkafel-windows'));
+    expect(readme, contains('upstream'));
+    expect(agent, contains('scripts/windows/build_app.ps1'));
+    expect(agent, contains('未登记的平台差异 = bug'));
+    expect(differences, contains('Windows 原生标题栏'));
+    expect(differences, contains('Ctrl'));
+    expect(differences, contains('资源管理器'));
+    expect(differences, contains('Videos'));
+  });
 }
