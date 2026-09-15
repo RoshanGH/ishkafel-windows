@@ -167,7 +167,7 @@ class _TagTraceSectionState extends State<TagTraceSection> {
                   size: 16, color: AppColors.textTertiary),
               const SizedBox(width: AppSpacing.xs),
               Text(_expanded ? '收起打标过程' : '查看打标过程',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppColors.textTertiary,
                       fontSize: AppFontSize.caption)),
             ],
@@ -228,10 +228,10 @@ class _TraceDetail extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: SelectableText(r,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: AppFontSize.micro,
-                      fontFamily: 'Menlo',
+                      fontFamily: platformMonospaceFontFamily,
                       height: 1.5)),
             ),
           ],

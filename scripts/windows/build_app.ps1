@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet('Debug', 'Release')]
     [string]$Mode = 'Debug'
 )
@@ -18,6 +18,11 @@ function Read-Secret([string]$Name, [bool]$Required) {
     return (Get-Content -Raw -LiteralPath $path).Trim()
 }
 
+$updateManifestKey = Read-Secret 'update_tos_manifest_key' $false
+if ([string]::IsNullOrWhiteSpace($updateManifestKey)) {
+    $updateManifestKey = 'windows/latest.json'
+}
+
 $values = [ordered]@{
     ARK_API_KEY         = Read-Secret 'ark_api_key' $true
     SPEECH_APP_ID       = Read-Secret 'speech_app_id' $true
@@ -27,6 +32,7 @@ $values = [ordered]@{
     UPDATE_TOS_ENDPOINT = Read-Secret 'update_tos_endpoint' $false
     UPDATE_TOS_AK       = Read-Secret 'update_tos_ak' $false
     UPDATE_TOS_SK       = Read-Secret 'update_tos_sk' $false
+    UPDATE_TOS_MANIFEST_KEY = $updateManifestKey
 }
 
 $arguments = @('build', 'windows', "--$($Mode.ToLowerInvariant())")
@@ -37,13 +43,7 @@ foreach ($entry in $values.GetEnumerator()) {
 Push-Location $projectRoot
 try {
     & (Join-Path $PSScriptRoot 'prepare_media_tools.ps1')
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Windows media tools preparation failed before app packaging.'
-    }
     & (Join-Path $PSScriptRoot 'build_cli.ps1')
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Windows CLI build failed before app packaging.'
-    }
     & flutter @arguments
     if ($LASTEXITCODE -ne 0) {
         throw 'Windows build failed.'

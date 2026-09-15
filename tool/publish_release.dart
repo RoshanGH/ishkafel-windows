@@ -17,16 +17,17 @@ import 'package:ishkafel/core/update/tos_signer.dart';
 
 Future<int> main(List<String> args) async {
   final version = _appVersion();
-  final zip = File('build/dist/ishkafel-$version.zip');
+  final archiveName = 'ishkafel-windows-$version-x64-portable.zip';
+  final zip = File('build/dist/$archiveName');
   if (!zip.existsSync()) {
-    stderr.writeln('没有 ${zip.path}——先跑 ./scripts/pack.sh');
+    stderr.writeln('没有 ${zip.path}——先跑 scripts/windows/package_app.ps1');
     return 1;
   }
 
   final signer = _signerFromSecrets();
   if (signer == null) return 1;
 
-  final key = 'releases/ishkafel-$version.zip';
+  final key = 'windows/releases/$archiveName';
   stdout.writeln('正在算指纹…');
   final sha = (await sha256.bind(zip.openRead()).first).toString();
   final size = zip.lengthSync();
@@ -66,7 +67,7 @@ String _appVersion() {
 }
 
 String _manifestKey() =>
-    _readOptional('update_tos_manifest_key') ?? 'latest.json';
+    _readOptional('update_tos_manifest_key') ?? 'windows/latest.json';
 
 /// 更新说明：**从 CHANGELOG 取最近若干版，不是只取这一版**。
 ///

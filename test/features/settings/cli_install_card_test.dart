@@ -47,6 +47,11 @@ void main() {
     expect(find.text('未安装'), findsOneWidget);
     expect(find.text('安装'), findsOneWidget);
     expect(find.textContaining('任意终端敲 ishkafel'), findsOneWidget);
+    if (Platform.isWindows) {
+      expect(find.textContaining('不需要管理员授权'), findsOneWidget);
+      expect(find.textContaining('需要一次管理员授权'), findsNothing);
+      expect(find.textContaining('LOCALAPPDATA'), findsOneWidget);
+    }
   });
 
   testWidgets('点安装 → 真的装上，并告诉用户下一步敲什么', (tester) async {
@@ -84,6 +89,9 @@ void main() {
     await pump(tester, CliInstaller(binDir: bin, bundledCli: bundled));
     expect(find.text('被占用'), findsOneWidget);
     expect(find.textContaining('不是本应用装的'), findsOneWidget);
+    if (Platform.isWindows) {
+      expect(find.textContaining('/usr/local/bin'), findsNothing);
+    }
     expect(find.widgetWithText(FilledButton, '安装'), findsNothing);
   });
 

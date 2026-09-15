@@ -6,6 +6,13 @@ import 'package:path/path.dart' as p;
 
 import '../log/app_log.dart';
 
+typedef UpdateProcessLauncher =
+    Future<void> Function(
+      String executable,
+      List<String> arguments,
+      ProcessStartMode mode,
+    );
+
 /// 下载失败/校验失败：message 面向用户（中文、说清下一步）
 class UpdateException implements Exception {
   final String message;
@@ -28,16 +35,27 @@ class UpdateException implements Exception {
 /// 5. 旧的先改名留着，新的就位后才删——中途失败还能把旧的搬回来
 class AppUpdater {
   final Future<ProcessResult> Function(String, List<String>) run;
+  final UpdateProcessLauncher launch;
   final HttpClient Function() httpClient;
   final String operatingSystem;
 
   AppUpdater({
     Future<ProcessResult> Function(String, List<String>)? run,
+    UpdateProcessLauncher? launch,
     HttpClient Function()? httpClient,
     String? operatingSystem,
   }) : run = run ?? Process.run,
+       launch = launch ?? _launchDetached,
        httpClient = httpClient ?? HttpClient.new,
        operatingSystem = operatingSystem ?? Platform.operatingSystem;
+
+  static Future<void> _launchDetached(
+    String executable,
+    List<String> arguments,
+    ProcessStartMode mode,
+  ) async {
+    await Process.start(executable, arguments, mode: mode);
+  }
 
   /// 下载到 [into]，边下边报进度（0~1）。返回落地的文件
   Future<File> download(
@@ -172,6 +190,10 @@ while ((Get-Process -Id $processId -ErrorAction SilentlyContinue) -and $i -lt 60
   Start-Sleep -Milliseconds 100
   $i++
 }
+$stillRunning = Get-Process -Id $processId -ErrorAction SilentlyContinue
+if ($stillRunning) {
+  exit 2
+}
 $target = '''
             '${_psQuote(targetApp)}\n'
             r'''$fresh = '''
@@ -241,7 +263,7 @@ exit 0
     if (!windows) await run('chmod', ['+x', script.path]);
     AppLog.info('自动更新：交棒给替换脚本 ${script.path}');
     // detached：这个进程马上就要退出了，脚本必须活下去
-    await Process.start(
+    await launch(
       windows ? 'powershell.exe' : '/bin/sh',
       windows
           ? [
@@ -253,7 +275,7 @@ exit 0
               script.path,
             ]
           : [script.path],
-      mode: ProcessStartMode.detachedWithStdio,
+      ProcessStartMode.detached,
     );
   }
 

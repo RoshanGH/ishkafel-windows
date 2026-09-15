@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -134,11 +136,15 @@ class _CliInstallCardState extends ConsumerState<CliInstallCard> {
               '那张卡片里，点「复制全文」粘给它即可。',
         CliStatus.stale => 'app 换过位置，命令指向的还是老路径，现在敲会报找不到文件。重装一次即可。',
         CliStatus.foreign =>
-          '/usr/local/bin/ishkafel 已经存在，但不是本应用装的。为免覆盖别人的东西这里不动它——'
+          '${_installer.binDir.path}${Platform.pathSeparator}ishkafel'
+              '${Platform.isWindows ? '.cmd' : ''} 已经存在，但不是本应用装的。'
+              '为免覆盖别人的东西这里不动它——'
               '确认可以覆盖就先手动删掉。',
         CliStatus.unavailable => '调试运行的产物里不带命令行工具，请用正式打包的版本。',
-        CliStatus.notInstalled =>
-          '装进 /usr/local/bin，之后在任意终端敲 ishkafel 就能用——让 Claude Code 这类 '
-              'Agent 自己跑完导入、分析、挑素材、导出。需要一次管理员授权。',
+        CliStatus.notInstalled => Platform.isWindows
+            ? r'装进当前用户的 LOCALAPPDATA\Ishkafel\bin 并加入用户 PATH，'
+                '之后在任意终端敲 ishkafel 就能用——不需要管理员授权。'
+            : '装进 /usr/local/bin，之后在任意终端敲 ishkafel 就能用——让 Claude Code 这类 '
+                'Agent 自己跑完导入、分析、挑素材、导出。需要一次管理员授权。',
       };
 }

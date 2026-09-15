@@ -47,6 +47,13 @@ void main() {
     }
   });
 
+  test('Windows 速查表写 Ctrl，不把 Mac 的 Command 键展示给用户', () {
+    final windows = playbackShortcutsFor('windows');
+    expect(windows,
+        contains((keys: 'Ctrl+Z / Ctrl+Shift+Z', what: '撤销 / 重做')));
+    expect(windows.map((entry) => entry.keys).join(' '), isNot(contains('⌘')));
+  });
+
   test('「怎么查快捷键」这件事本身也有快捷键', () {
     expect(boundKeys(), contains(LogicalKeyboardKey.slash),
         reason: '记不住键位的人得有地方问——? 和 ⌘/ 是通行做法');

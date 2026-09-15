@@ -124,10 +124,28 @@ abstract final class InstallRecipes {
             '命令行那头跑 ishkafel doctor 复查。',
   );
 
+  static const windowsAudioSeparator = InstallRecipe(
+    tool: 'audio-separator',
+    requires: 'uv',
+    command: ['uv', 'tool', 'install', 'audio-separator[cpu]'],
+    description: '安装人声分离工具（走清华镜像，约 1GB / 5~15 分钟；'
+        '只有换配乐时才用得到）',
+    environment: Mirrors.pypi,
+    prerequisiteHint: '需要先安装 Windows 版 uv（Python 工具管理器）。请按 uv 官方文档'
+        '安装，完成后回到这里点「重新检测」；PowerShell 中可运行 '
+        'ishkafel doctor 复查。',
+  );
+
   static const all = [ffmpeg, miaoa, audioSeparator];
 
   /// 这个工具有没有配方
-  static InstallRecipe? forTool(String tool) {
+  static InstallRecipe? forTool(String tool, {String? operatingSystem}) {
+    if ((operatingSystem ?? Platform.operatingSystem) == 'windows') {
+      // FFmpeg/ffprobe 是正式包的一部分；缺失说明包损坏，在线装另一版会破坏
+      // 成片确定性。miaoa 尚无经确认的 Windows 安装器，也不能拿 bash 配方硬跑。
+      if (tool == 'audio-separator') return windowsAudioSeparator;
+      return null;
+    }
     for (final r in all) {
       // ffprobe 跟着 ffmpeg 一起装
       if (r.tool == tool || (r.tool == 'ffmpeg' && tool == 'ffprobe')) return r;

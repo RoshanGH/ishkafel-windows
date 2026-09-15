@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import '../../core/ffmpeg/media_tools_locator.dart';
 import '../../core/build_mode.dart';
 import '../../core/miaoa/miaoa_account_service.dart';
@@ -53,8 +55,10 @@ class Readiness {
     /// 测试注入用：flutter test 的 VM 永远是 debug 模式，不注入的话
     /// 正式版文案那条分支在测试里永远走不到
     bool debugBuild = isDebugBuild,
+    String? operatingSystem,
   }) {
-    final tools = _toolsItem(mediaTools);
+    final resolvedOperatingSystem = operatingSystem ?? Platform.operatingSystem;
+    final tools = _toolsItem(mediaTools, resolvedOperatingSystem);
     return Readiness(
       items: [
         tools,
@@ -66,11 +70,14 @@ class Readiness {
       // 把入口锁死反而让用户连重试的机会都没有。
       blockingReason: tools.ready || tools.checking
           ? null
-          : '未检测到 ffmpeg，无法读取视频信息与抽取封面。请先按下方提示安装。',
+          : resolvedOperatingSystem == 'windows'
+              ? '未检测到内置 ffmpeg，无法读取视频信息与抽取封面。请重新安装完整版本。'
+              : '未检测到 ffmpeg，无法读取视频信息与抽取封面。请先按下方提示安装。',
     );
   }
 
-  static ReadinessItem _toolsItem(MediaToolsStatus? status) {
+  static ReadinessItem _toolsItem(
+      MediaToolsStatus? status, String operatingSystem) {
     if (status == null) {
       return const ReadinessItem(
           title: '视频处理组件',
@@ -86,8 +93,11 @@ class Readiness {
       title: '视频处理组件',
       statusText: '缺少 ${status.missingTools.join('、')}',
       ready: false,
-      hint: '没有它就无法导入与分析素材。请在终端执行 brew install ffmpeg 安装，'
-          '然后重启本应用。',
+      hint: operatingSystem == 'windows'
+          ? '没有它就无法导入与分析素材。Windows 正式包本应内置这些组件，'
+              '请重新安装从官方渠道取得的完整版本。'
+          : '没有它就无法导入与分析素材。请在终端执行 brew install ffmpeg 安装，'
+              '然后重启本应用。',
     );
   }
 

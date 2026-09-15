@@ -49,9 +49,15 @@ jobs:
       - name: Smoke-test real media pipeline
         shell: pwsh
         run: ./scripts/windows/test_media_pipeline.ps1 -Mode Release
+      - name: Package Windows distributions
+        shell: pwsh
+        run: ./scripts/windows/package_app.ps1 -SkipBuild
+      - name: Smoke-test Windows distributions
+        shell: pwsh
+        run: ./scripts/windows/test_distribution.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: ishkafel-windows-${{ github.sha }}
-          path: build/windows/x64/runner/Release/
+          path: build/dist/
           if-no-files-found: error
           retention-days: 7

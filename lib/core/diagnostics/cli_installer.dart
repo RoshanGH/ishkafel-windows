@@ -305,7 +305,9 @@ class CliInstaller {
   }
 
   static bool _isPermission(FileSystemException e) =>
-      e.osError?.errorCode == 13 || e.osError?.errorCode == 1;
+      e.osError?.errorCode == 13 ||
+      e.osError?.errorCode == 1 ||
+      e.osError?.errorCode == 5;
 
   /// 单引号包起来，里面的单引号按 shell 的规矩转义
   static String _q(String path) => "'${path.replaceAll("'", r"'\''")}'";

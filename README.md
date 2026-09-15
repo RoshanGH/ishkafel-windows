@@ -27,49 +27,19 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\build_cli.ps1
 概念与流程见 [docs/术语表.md](docs/术语表.md) 与
 [docs/2026-07-29-项目方向与架构设计.md](docs/2026-07-29-项目方向与架构设计.md)。
 
-## 第一次在一台新机器上跑，要装什么
+## Windows 使用与依赖
 
-四样东西。装完**重启应用**——macOS 上由 Finder 启动的 GUI 进程继承的是
-launchd 的空 PATH，应用只在启动时去那几个常见目录里找这些工具。
+正式包已经内置固定版本的 `ffmpeg.exe` / `ffprobe.exe`、字幕渲染器和 CLI，用户不需要
+安装 Homebrew、winget 或单独配置 FFmpeg。素材库检索仍需要 miaoa 提供 Windows CLI；
+在它可用之前，对应诊断会明确报缺失，不会静默假装完成。
 
-### 1. ffmpeg / ffprobe（必需）
+`audio-separator` 只在换配乐并分离人声时需要，可用 Windows 版 `uv` 安装：
 
-抽帧、切片、合成成片都靠它。
-
-```sh
-brew install ffmpeg
-```
-
-### 2. miaoa CLI（必需）
-
-素材库检索、标签体系、项目列表。装好后要登录一次：
-
-```sh
-miaoa auth login
-```
-
-登录失效时应用里会提示重新执行这条命令。
-
-### 3. audio-separator（换配乐要用）
-
-把原片音频拆成「纯人声口播」与「纯背景音」两条轨。**不装也能用**：分析照常
-完成，只是替换配乐时新曲子会和原片自带的背景音叠在一起（应用里会说明）。
-
-```sh
+```powershell
 uv tool install "audio-separator[cpu]"
 ```
 
-装完约 1GB（主要是 PyTorch）；首次分析时会再自动下载分离模型（64MB）。之后
-每条 96 秒的片子分离约 15 秒，跑在分析流程里。
-
-> 模型选型是拿音质换速度：同一条素材上，BS-Roformer 分得几乎只剩人声但要
-> 81 秒、模型 610MB；当前这个 MDX 模型 15 秒、64MB，代价是人声里还留着一些
-> 背景音乐。换模型只需改 `VocalSeparator.model` 一个常量。
->
-> 另记一笔：这几个模型的差异**用指标测不出来**（RMS、频段能量、包络相关性
-> 的差异全在 -30dB 以下），只能靠听。
-
-### 4. AI 凭据（必需）
+### AI 凭据（正式内部构建必需）
 
 放在项目根目录的 `.secrets/`（已 gitignore），三个文件：
 
@@ -79,13 +49,26 @@ uv tool install "audio-separator[cpu]"
 .secrets/speech_access_token
 ```
 
-打包版从 `--dart-define` 注入，见 `scripts/build_macos.sh`；开发期从上面这个
-目录读。凭据不全时应用照常启动，只是分析与打标不可用，并在界面上说明原因。
+正式包由 `scripts\windows\build_app.ps1` 在编译期注入。凭据不全时应用可以做无凭据
+编译验证，但分析与打标不可用，因此这种构建不能作为正式交付物。
 
-## 开发
+## Windows 开发与分发
 
-```sh
-flutter test          # 全量测试
+```powershell
+flutter test
 flutter analyze
-./scripts/build_macos.sh && open build/macos/Build/Products/Debug/ishkafel.app
+powershell -ExecutionPolicy Bypass -File scripts\windows\build_app.ps1 -Mode Release
+powershell -ExecutionPolicy Bypass -File scripts\windows\package_app.ps1 -SkipBuild
+powershell -ExecutionPolicy Bypass -File scripts\windows\capture_app.ps1
 ```
+
+分发脚本同时生成版本化 MSIX、便携 ZIP、`distribution.json` 和 SHA-256 清单。若
+`.secrets\windows_signing.pfx` 与 `.secrets\windows_signing_password` 存在，会签名
+EXE/DLL 和 MSIX 并验证；公开发布必须增加 `-RequireSigning`，没有受信任证书就失败。
+未签名 MSIX 只用于验证包结构，便携 ZIP 只用于内部真机测试。
+
+Windows SDK Build Tools 从 Microsoft 官方 NuGet 固定版本下载并校验哈希；版本、地址、
+哈希和许可入口记录在 `third_party\windows_sdk\build_tools.json`。
+
+Windows 自动更新发布便携 ZIP，并固定使用 `windows/latest.json` 与
+`windows/releases/`；即使 Mac 与 Windows 共用同一个私有 TOS bucket，也不会互相覆盖更新清单。

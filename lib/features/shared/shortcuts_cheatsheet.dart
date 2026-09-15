@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../app/theme/app_colors.dart';
@@ -16,17 +18,21 @@ typedef ShortcutEntry = ({String keys, String what});
 ///
 /// `test/architecture/shortcuts_documented_test.dart` 盯着「这里列的键
 /// 真的绑上了」。
-const playbackShortcuts = <ShortcutEntry>[
+List<ShortcutEntry> playbackShortcutsFor(String operatingSystem) => [
   (keys: '空格 / 回车', what: '播放、暂停'),
   (keys: 'J K L', what: '倒着走 · 停 · 往前走（连按加速）'),
   (keys: '← →', what: '逐帧'),
   (keys: '⇧ ← →', what: '一次 10 帧'),
   (keys: '↑ ↓', what: '选中上一个 / 下一个'),
   (keys: 'Home / End', what: '跳到片头 / 片尾'),
-  (keys: '⌘Z / ⇧⌘Z', what: '撤销 / 重做'),
+  (keys: operatingSystem == 'windows' ? 'Ctrl+Z / Ctrl+Shift+Z' : '⌘Z / ⇧⌘Z',
+      what: '撤销 / 重做'),
 ];
 
-/// 审片台里随时能叫出来的速查表（`?` 或 ⌘/）
+List<ShortcutEntry> get playbackShortcuts =>
+    playbackShortcutsFor(Platform.operatingSystem);
+
+/// 审片台里随时能叫出来的速查表（`?` 或平台对应的斜杠快捷键）
 Future<void> showShortcutsCheatSheet(BuildContext context) => showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
