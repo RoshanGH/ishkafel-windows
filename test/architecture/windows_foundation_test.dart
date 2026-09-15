@@ -98,6 +98,20 @@ void main() {
     }
   });
 
+  test('业务页面不使用 HOME 手工拼 Windows 用户目录', () {
+    for (final path in const [
+      'lib/features/director/director_page.dart',
+      'lib/features/settings/agent_skill_card.dart',
+    ]) {
+      final source = File(path).readAsStringSync();
+      expect(
+        source,
+        isNot(contains("Platform.environment['HOME']")),
+        reason: '$path 必须通过 PlatformPaths 解析桌面目录',
+      );
+    }
+  });
+
   test('Mac 同步只能开 PR，不能自动合并', () {
     final local = File('scripts/windows/sync_upstream.ps1').readAsStringSync();
     final workflow = File(
