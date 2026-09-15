@@ -1037,7 +1037,7 @@ void main() {
       expect(saved!.script!.defaultVoiceId, other.ref.id);
     });
 
-    testWidgets('⌘ 加选两行 → 操作条出现，说清选了几行', (tester) async {
+    testWidgets('平台原生修饰键加选两行 → 操作条出现，说清选了几行', (tester) async {
       final repo = _MemoryRepo();
       final doc = docWith(['一', '二', '三']);
       await pumpDirector(tester, wrap(repo, scriptTask(doc: doc)));
@@ -1045,10 +1045,13 @@ void main() {
       expect(find.byKey(const Key('multi-voice')), findsNothing,
           reason: '只选一行时不该有操作条——那是「批量模式」的味道');
 
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+      final additiveKey = Platform.isWindows
+          ? LogicalKeyboardKey.control
+          : LogicalKeyboardKey.meta;
+      await tester.sendKeyDownEvent(additiveKey);
       await tester.tap(find.byKey(ValueKey('band-${doc.lines[1].id}')));
       await tester.pumpAndSettle();
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+      await tester.sendKeyUpEvent(additiveKey);
       await tester.pumpAndSettle();
 
       expect(find.textContaining('已选 2 行'), findsOneWidget);
