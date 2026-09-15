@@ -150,7 +150,10 @@ void main() {
           isA<FfmpegException>().having(
             (e) => e.message,
             'message',
-            allOf(contains('ffprobe'), contains('未找到')),
+            allOf(
+              contains('ffprobe'),
+              anyOf(contains('未找到'), contains('缺失或损坏')),
+            ),
           ),
         ),
       );

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import '../../core/ai/ai_credentials.dart';
+import '../../core/ffmpeg/process_runner.dart';
 import '../../core/miaoa/miaoa_gateway.dart';
 import '../app_locator.dart';
 
@@ -19,6 +20,7 @@ Future<int> runDoctorCommand({
   String? currentDir,
   Future<bool> Function()? miaoaProbe,
   Future<bool> Function()? ffmpegProbe,
+  ProcessRunner? mediaToolRun,
 }) async {
   final problems = <String>[];
 
@@ -35,11 +37,13 @@ Future<int> runDoctorCommand({
     out.writeln('✓ AI 凭据：齐了');
   } else {
     out.writeln('✗ AI 凭据：缺 ${missing.join('、')}');
-    problems.add('缺 AI 凭据（${missing.join('、')}）。'
-        '正常情况下正式包会自带；这台机器上没有的话，'
-        '把这几个文件放到 ${dataDir.path}/credentials/，'
-        '或者用环境变量 ARK_API_KEY / SPEECH_APP_ID / SPEECH_ACCESS_TOKEN。'
-        '缺了就没法分析视频、没法配音。');
+    problems.add(
+      '缺 AI 凭据（${missing.join('、')}）。'
+      '正常情况下正式包会自带；这台机器上没有的话，'
+      '把这几个文件放到 ${dataDir.path}/credentials/，'
+      '或者用环境变量 ARK_API_KEY / SPEECH_APP_ID / SPEECH_ACCESS_TOKEN。'
+      '缺了就没法分析视频、没法配音。',
+    );
   }
 
   final miaoaOk = await (miaoaProbe ?? _probeMiaoa)();
@@ -47,12 +51,16 @@ Future<int> runDoctorCommand({
     out.writeln('✓ 素材库：登录着');
   } else {
     out.writeln('✗ 素材库：没登录，或者 miaoa 这个工具没装');
-    problems.add('素材库连不上。请人自己在终端里敲 `miaoa auth login`'
-        '——这条命令要跳浏览器，Agent 代跑不了。'
-        '连不上就挑不了素材，换画面做不下去。');
+    problems.add(
+      '素材库连不上。请人自己在终端里敲 `miaoa auth login`'
+      '——这条命令要跳浏览器，Agent 代跑不了。'
+      '连不上就挑不了素材，换画面做不下去。',
+    );
   }
 
-  final ffmpegOk = await (ffmpegProbe ?? _probeFfmpeg)();
+  final ffmpegOk =
+      await (ffmpegProbe ??
+          () => _probeFfmpeg(mediaToolRun ?? systemProcessRunner))();
   if (ffmpegOk) {
     out.writeln('✓ ffmpeg：在');
   } else {
@@ -81,9 +89,9 @@ Future<bool> _probeMiaoa() async {
   }
 }
 
-Future<bool> _probeFfmpeg() async {
+Future<bool> _probeFfmpeg(ProcessRunner run) async {
   try {
-    final r = await Process.run('ffmpeg', ['-version']);
+    final r = await run('ffmpeg', ['-version']);
     return r.exitCode == 0;
   } catch (_) {
     return false;

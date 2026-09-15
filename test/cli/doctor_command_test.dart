@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/cli/commands/doctor_command.dart';
+import 'package:ishkafel/core/ffmpeg/process_runner.dart';
 
 /// 开工前的体检。
 ///
@@ -76,8 +77,39 @@ void main() {
     );
 
     expect(code, 5);
-    expect(err.toString(), contains('miaoa auth login'),
-        reason: '这条命令得由人自己去敲——手册明写不许 Agent 代跑');
+    expect(
+      err.toString(),
+      contains('miaoa auth login'),
+      reason: '这条命令得由人自己去敲——手册明写不许 Agent 代跑',
+    );
+    dir.deleteSync(recursive: true);
+  });
+
+  test('默认 ffmpeg 体检走统一媒体执行器而不是直接查进程 PATH', () async {
+    final dir = tempDir();
+    final calls = <(String, List<String>)>[];
+
+    final code = await runDoctorCommand(
+      dataDir: dir,
+      out: StringBuffer(),
+      err: StringBuffer(),
+      currentDir: dir.path,
+      env: const {
+        'ARK_API_KEY': 'x',
+        'SPEECH_APP_ID': 'x',
+        'SPEECH_ACCESS_TOKEN': 'x',
+      },
+      miaoaProbe: () async => true,
+      mediaToolRun: (executable, args) async {
+        calls.add((executable, args));
+        return ProcessResult(1, 0, 'ffmpeg version fixture', '');
+      },
+    );
+
+    expect(code, 0);
+    expect(calls, hasLength(1));
+    expect(calls.single.$1, 'ffmpeg');
+    expect(calls.single.$2, ['-version']);
     dir.deleteSync(recursive: true);
   });
 }
