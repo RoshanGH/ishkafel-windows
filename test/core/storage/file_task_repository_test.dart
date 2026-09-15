@@ -10,10 +10,13 @@ import 'package:ishkafel/core/models/video_info.dart';
 import 'package:ishkafel/core/storage/file_task_repository.dart';
 
 RenewTask makeTask(String id, DateTime updatedAt) => RenewTask(
-      id: id, name: '任务$id', sourcePath: '/v/$id.mp4',
-      status: RenewTaskStatus.analyzing,
-      createdAt: DateTime.utc(2026, 7, 29), updatedAt: updatedAt,
-    );
+  id: id,
+  name: '任务$id',
+  sourcePath: '/v/$id.mp4',
+  status: RenewTaskStatus.analyzing,
+  createdAt: DateTime.utc(2026, 7, 29),
+  updatedAt: updatedAt,
+);
 
 /// 真实规模的任务：96 秒素材 / 10 个台词语义单元 / 48 个视觉镜头 /
 /// 26 句 ASR / 586 个字级时间戳，落盘约 44 KB——线上任务 JSON 的真实体量。
@@ -69,7 +72,12 @@ RenewTask makeHeavyTask(String id) {
     coverPath: '/Users/x/Library/ishkafel/covers/$id.jpg',
     status: RenewTaskStatus.ready,
     createdAt: DateTime.utc(2026, 7, 20, 10),
-    updatedAt: DateTime.utc(2026, 7, 20, 11).add(Duration(seconds: id.hashCode % 1000)),
+    updatedAt: DateTime.utc(
+      2026,
+      7,
+      20,
+      11,
+    ).add(Duration(seconds: id.hashCode % 1000)),
     units: units,
     asrSentences: sentences,
   );
@@ -130,7 +138,9 @@ void main() {
     await repo.save(makeTask('good', DateTime.utc(2026, 7, 29)));
     final badType = File('${tempDir.path}/tasks/badtype.json');
     // id 是数字，不是字符串 → RenewTask.fromJson 会抛 TypeError
-    await badType.writeAsString('{"id": 123, "name": "test", "sourcePath": "/v/test.mp4", "status": "analyzing", "createdAt": "2026-07-29T00:00:00.000Z", "updatedAt": "2026-07-29T00:00:00.000Z"}');
+    await badType.writeAsString(
+      '{"id": 123, "name": "test", "sourcePath": "/v/test.mp4", "status": "analyzing", "createdAt": "2026-07-29T00:00:00.000Z", "updatedAt": "2026-07-29T00:00:00.000Z"}',
+    );
     final all = await repo.findAll();
     expect(all.map((t) => t.id).toList(), ['good']);
   });
@@ -139,7 +149,9 @@ void main() {
     final tasksDir = Directory('${tempDir.path}/tasks');
     await tasksDir.create(recursive: true);
     final badType = File('${tempDir.path}/tasks/badtype.json');
-    await badType.writeAsString('{"id": 123, "name": "test", "sourcePath": "/v/test.mp4", "status": "analyzing", "createdAt": "2026-07-29T00:00:00.000Z", "updatedAt": "2026-07-29T00:00:00.000Z"}');
+    await badType.writeAsString(
+      '{"id": 123, "name": "test", "sourcePath": "/v/test.mp4", "status": "analyzing", "createdAt": "2026-07-29T00:00:00.000Z", "updatedAt": "2026-07-29T00:00:00.000Z"}',
+    );
     expect(await repo.findById('badtype'), isNull);
   });
 
@@ -148,8 +160,9 @@ void main() {
     final bad = File('${tempDir.path}/tasks/bad_enum.json');
     await bad.create(recursive: true);
     await bad.writeAsString(
-        '{"id":"bad_enum","name":"n","sourcePath":"/x.mp4","status":"notAStatus",'
-        '"createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z"}');
+      '{"id":"bad_enum","name":"n","sourcePath":"/x.mp4","status":"notAStatus",'
+      '"createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z"}',
+    );
     final all = await repo.findAll();
     expect(all.map((t) => t.id).toSet(), {'good', 'bad_enum'});
     expect(repo.skippedTaskFileCount, 0);
@@ -159,8 +172,9 @@ void main() {
     final bad = File('${tempDir.path}/tasks/x.json');
     await bad.create(recursive: true);
     await bad.writeAsString(
-        '{"id":"x","name":"n","sourcePath":"/x.mp4","status":"notAStatus",'
-        '"createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z"}');
+      '{"id":"x","name":"n","sourcePath":"/x.mp4","status":"notAStatus",'
+      '"createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z"}',
+    );
     final parsed = await repo.findById('x');
     expect(parsed, isNotNull);
     expect(parsed!.status, RenewTaskStatus.ready);
@@ -174,13 +188,29 @@ void main() {
       // 模拟「权限不足 / 文件刚好被删 / 外接卷掉线」这类 FileSystemException：
       // readAsString 会抛 PathNotFoundException 等 FileSystemException 子类，
       // 它们不是 FormatException/TypeError/ArgumentError，会穿透整批装载
-      await Process.run('chmod', ['000', locked.path]);
-      addTearDown(() => Process.run('chmod', ['644', locked.path]));
+      if (Platform.isWindows) {
+        final user = Platform.environment['USERNAME']!;
+        final denied = await Process.run('icacls.exe', [
+          locked.path,
+          '/inheritance:r',
+          '/deny',
+          '$user:(R)',
+        ]);
+        expect(denied.exitCode, 0, reason: '${denied.stderr}');
+        addTearDown(
+          () =>
+              Process.run('icacls.exe', [locked.path, '/grant:r', '$user:(F)']),
+        );
+      } else {
+        await Process.run('chmod', ['000', locked.path]);
+        addTearDown(() => Process.run('chmod', ['644', locked.path]));
+      }
 
       final all = await repo.findAll();
 
-      expect(all.map((t) => t.id).toList(), ['good'],
-          reason: '一个读不出来的文件不能让整个任务列表消失');
+      expect(all.map((t) => t.id).toList(), [
+        'good',
+      ], reason: '一个读不出来的文件不能让整个任务列表消失');
       expect(repo.skippedTaskFileCount, 1);
     });
   });
@@ -189,10 +219,11 @@ void main() {
     test('findAll 记录本次跳过的文件数', () async {
       await repo.save(makeTask('good', DateTime.utc(2026, 7, 29)));
       await File('${tempDir.path}/tasks/bad1.json').writeAsString('{not valid');
-      await File('${tempDir.path}/tasks/bad2.json')
-          .writeAsString('{"id": 123, "name": "t", "sourcePath": "/v.mp4",'
-              '"status": "analyzing", "createdAt": "2026-07-29T00:00:00.000Z",'
-              '"updatedAt": "2026-07-29T00:00:00.000Z"}');
+      await File('${tempDir.path}/tasks/bad2.json').writeAsString(
+        '{"id": 123, "name": "t", "sourcePath": "/v.mp4",'
+        '"status": "analyzing", "createdAt": "2026-07-29T00:00:00.000Z",'
+        '"updatedAt": "2026-07-29T00:00:00.000Z"}',
+      );
 
       final all = await repo.findAll();
 
@@ -243,12 +274,14 @@ void main() {
       expect(idleMs, greaterThanOrEqualTo(5), reason: '样本太小则比值没有区分度');
       // 解码留在 UI isolate 时只能抢到约 28% 的主线程，耗时会涨到 3~5 倍
       // （实测 100 条：131 ms → 573 ms）；搬到后台 isolate 后基本不受影响。
-      expect(busyMs, lessThan(idleMs * 2.5),
-          reason: '解码仍在 UI isolate 上跟渲染抢时间片（空闲 $idleMs ms → 繁忙 $busyMs ms）');
+      expect(
+        busyMs,
+        lessThan(idleMs * 2.5),
+        reason: '解码仍在 UI isolate 上跟渲染抢时间片（空闲 $idleMs ms → 繁忙 $busyMs ms）',
+      );
     });
 
-    test('跳过坏文件的告警仍走主 isolate 的 AppLog 出口（不能因换 isolate 而丢日志）',
-        () async {
+    test('跳过坏文件的告警仍走主 isolate 的 AppLog 出口（不能因换 isolate 而丢日志）', () async {
       final captured = <String>[];
       final original = AppLog.sink;
       AppLog.sink = captured.add;
@@ -258,12 +291,14 @@ void main() {
       await File('${tempDir.path}/tasks/bad.json').writeAsString('{not valid');
       await repo.findAll();
 
-      expect(captured.where((l) => l.contains('bad.json')), isNotEmpty,
-          reason: '后台 isolate 的 AppLog.sink 是另一份 static，日志必须带回主 isolate 输出');
+      expect(
+        captured.where((l) => l.contains('bad.json')),
+        isNotEmpty,
+        reason: '后台 isolate 的 AppLog.sink 是另一份 static，日志必须带回主 isolate 输出',
+      );
     });
 
-    test('跨 isolate 传回的任务对象与原对象逐字段相等（含 units / ASR 字级时间戳）',
-        () async {
+    test('跨 isolate 传回的任务对象与原对象逐字段相等（含 units / ASR 字级时间戳）', () async {
       final original = makeHeavyTask('roundtrip');
       await repo.save(original);
 

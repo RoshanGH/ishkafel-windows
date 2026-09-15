@@ -49,15 +49,17 @@ Future<int> runUiCommand({
   final sink = err ?? stderr;
   const subs = ['new-task', 'tasks', 'open'];
   if (rest.isEmpty || !subs.contains(rest.first)) {
-    sink.writeln('用法：\n'
-        '  ishkafel ui new-task --mode <replace|blank|script> '
-        '--tag-groups <id,id> [--file <原片>]\n'
-        '  ishkafel ui open <任务> [--module director|workbench|review]\n'
-        '      把界面叫到这条任务上。**可视模式下每一步开工前都该在现场**\n'
-        '  ishkafel ui tasks\n'
-        '      把界面支开、退回任务列表。可视模式下一般用不着：撞上界面的锁\n'
-        '      时命令会自动请它让位（人留在那一页看着），不需要你先支开它。\n'
-        '      支开了就等于关掉了可视化现场，要再用 ui open 才叫得回来');
+    sink.writeln(
+      '用法：\n'
+      '  ishkafel ui new-task --mode <replace|blank|script> '
+      '--tag-groups <id,id> [--file <原片>]\n'
+      '  ishkafel ui open <任务> [--module director|workbench|review]\n'
+      '      把界面叫到这条任务上。**可视模式下每一步开工前都该在现场**\n'
+      '  ishkafel ui tasks\n'
+      '      把界面支开、退回任务列表。可视模式下一般用不着：撞上界面的锁\n'
+      '      时命令会自动请它让位（人留在那一页看着），不需要你先支开它。\n'
+      '      支开了就等于关掉了可视化现场，要再用 ui open 才叫得回来',
+    );
     return exitBadUsage;
   }
   if (rest.first == 'open') {
@@ -89,10 +91,12 @@ Future<int> runUiCommand({
   if (parsed == null) {
     // 报错里的词必须是现在的词：人照着报错去敲，写出来的就是这几个。
     // 这儿曾经还写着废弃的 renew，而手册早改成 replace 了
-    sink.writeln('--mode 要是 replace / blank / script 之一：\n'
-        '  replace  替换裂变，拿一条现成的片子换画面（要 --file）\n'
-        '  blank    替换裂变但不用原片：拼画面、没有台词与配音\n'
-        '  script   脚本成片，从台词造一条新片');
+    sink.writeln(
+      '--mode 要是 replace / blank / script 之一：\n'
+      '  replace  替换裂变，拿一条现成的片子换画面（要 --file）\n'
+      '  blank    替换裂变但不用原片：拼画面、没有台词与配音\n'
+      '  script   脚本成片，从台词造一条新片',
+    );
     return exitBadUsage;
   }
   final ids = <int>[
@@ -100,8 +104,11 @@ Future<int> runUiCommand({
       ?int.tryParse(piece.trim()),
   ];
   // 先在本地拦一道：让人看着向导弹出来又因为参数不对关掉，比不弹更糟
-  final issues =
-      validateWizardFill(mode: parsed, filePath: file, tagGroupIds: ids);
+  final issues = validateWizardFill(
+    mode: parsed,
+    filePath: file,
+    tagGroupIds: ids,
+  );
   if (issues.isNotEmpty) {
     for (final i in issues) {
       sink.writeln('· $i');
@@ -113,8 +120,7 @@ Future<int> runUiCommand({
   final exec = run ?? Process.run;
   final appPath = resolveAppPath(env: env, exists: appExists);
   // 冷启动的话，界面要几秒才起得来。先探一眼它在不在，好决定等多久
-  final wasRunning =
-      appPath != null && await _appIsRunning(exec, appPath);
+  final wasRunning = appPath != null && await _appIsRunning(exec, appPath);
   final failure = await launchApp(run: exec, env: env, exists: appExists);
   if (failure != null) {
     sink.writeln(failure);
@@ -141,11 +147,17 @@ Future<int> runUiCommand({
   );
   sink.writeln('已让界面打开新建任务向导，正在等它建完…');
   final result = await waitForAgentRequest(
-      dataDir: dataDir, taskId: globalPresenceSlot, id: id, timeout: waitForUi);
+    dataDir: dataDir,
+    taskId: globalPresenceSlot,
+    id: id,
+    timeout: waitForUi,
+  );
   if (result == null) {
     // 这里超时是**真失败**：活儿没干。报成功的话人会以为任务建好了
-    sink.writeln('界面没有回应（等了 ${waitForUi.inSeconds} 秒）。'
-        '可能它没开、或者停在别的页面上——让用户看一眼');
+    sink.writeln(
+      '界面没有回应（等了 ${waitForUi.inSeconds} 秒）。'
+      '可能它没开、或者停在别的页面上——让用户看一眼',
+    );
     return exitEnv;
   }
   if (!result.ok) {
@@ -157,8 +169,10 @@ Future<int> runUiCommand({
   // 猜出来的是上一次的任务，还报「已经建好了」
   final newId = '${result.payload['taskId'] ?? ''}';
   if (newId.isEmpty) {
-    sink.writeln('界面说建好了，却没报出是哪一条任务。'
-        '用 ishkafel tasks 看一眼，别照着猜的 id 往下走');
+    sink.writeln(
+      '界面说建好了，却没报出是哪一条任务。'
+      '用 ishkafel tasks 看一眼，别照着猜的 id 往下走',
+    );
     return exitFailed;
   }
   final created = await FileTaskRepository(dataDir).findById(newId);
@@ -176,7 +190,8 @@ Future<int> runUiCommand({
     // 界面这会儿正停在新任务上占着锁，而下一步多半要写这条任务。
     // 不说的话 Agent 会直接撞上「人（编导台）正在操作这个任务」，
     // 而它看不出这是常态、更看不出出路在哪（验收 Agent 卡在这儿过）
-    'note': '界面正停在这条任务上，它占着写锁。接下来要写这条任务的话'
+    'note':
+        '界面正停在这条任务上，它占着写锁。接下来要写这条任务的话'
         '（script extract / analyze 这些），先让界面退回列表：'
         'ishkafel ui tasks',
     'next': switch (kind) {
@@ -190,16 +205,27 @@ Future<int> runUiCommand({
 
 /// app 是不是已经在跑。冷启动和已运行要等的时间差很多
 Future<bool> _appIsRunning(
-    Future<ProcessResult> Function(String, List<String>) exec,
-    String appPath) async {
+  Future<ProcessResult> Function(String, List<String>) exec,
+  String appPath,
+) async {
   try {
+    if (Platform.isWindows) {
+      final r = await exec('tasklist.exe', [
+        '/FI',
+        'IMAGENAME eq ishkafel.exe',
+        '/FO',
+        'CSV',
+        '/NH',
+      ]);
+      return r.exitCode == 0 &&
+          '${r.stdout}'.toLowerCase().contains('ishkafel.exe');
+    }
     final r = await exec('pgrep', ['-f', '$appPath/Contents/MacOS/']);
     return r.exitCode == 0 && '${r.stdout}'.trim().isNotEmpty;
   } catch (_) {
     return false;
   }
 }
-
 
 /// `ishkafel ui tasks` —— 让界面退回任务列表，**松开它占着的那把锁**。
 ///
@@ -219,8 +245,11 @@ Future<int> _backToTaskList({
   StringSink? err,
 }) async {
   final sink = err ?? stderr;
-  final failure =
-      await launchApp(run: run ?? Process.run, env: env, exists: appExists);
+  final failure = await launchApp(
+    run: run ?? Process.run,
+    env: env,
+    exists: appExists,
+  );
   if (failure != null) {
     sink.writeln(failure);
     return exitEnv;
@@ -232,10 +261,16 @@ Future<int> _backToTaskList({
     payload: const {},
   );
   final result = await waitForAgentRequest(
-      dataDir: dataDir, taskId: globalPresenceSlot, id: id, timeout: waitForUi);
+    dataDir: dataDir,
+    taskId: globalPresenceSlot,
+    id: id,
+    timeout: waitForUi,
+  );
   if (result == null) {
-    sink.writeln('界面没有回应（等了 ${waitForUi.inSeconds} 秒）。'
-        '它可能没开——那样也就没有锁挡着，直接往下走试试');
+    sink.writeln(
+      '界面没有回应（等了 ${waitForUi.inSeconds} 秒）。'
+      '它可能没开——那样也就没有锁挡着，直接往下走试试',
+    );
     return exitEnv;
   }
   if (!result.ok) {
@@ -245,7 +280,6 @@ Future<int> _backToTaskList({
   emitJson({'ok': true, 'via': 'ui', 'message': result.message}, out: out);
   return 0;
 }
-
 
 /// `ishkafel ui open <任务> [--module …]` —— **把界面叫到现场**。
 ///
@@ -288,12 +322,19 @@ Future<int> _openTaskPage({
   // 已经在这一页就别再唤醒：唤醒会把页面关掉重开，滚动位置、展开的镜头
   // 全丢，人看到的是画面弹回第一行
   if (readUiWhere(dataDir)?.isOn(module: target, taskId: task.id) == true) {
-    emitJson({'ok': true, 'already': true, 'module': target, 'task': task.id},
-        out: out);
+    emitJson({
+      'ok': true,
+      'already': true,
+      'module': target,
+      'task': task.id,
+    }, out: out);
     return 0;
   }
-  final failure =
-      await launchApp(run: run ?? Process.run, env: env, exists: appExists);
+  final failure = await launchApp(
+    run: run ?? Process.run,
+    env: env,
+    exists: appExists,
+  );
   if (failure != null) {
     sink.writeln(failure);
     return exitEnv;
@@ -309,9 +350,15 @@ Future<int> _openTaskPage({
     await Future<void>.delayed(const Duration(milliseconds: 200));
   }
   // 没等到不算失败：软件可能正在冷启动，唤醒文件躺在那儿，它起来就会落位
-  sink.writeln('界面还没落到「$target」（等了 ${waitForUi.inSeconds} 秒）。'
-      '唤醒已经写下了，软件起来就会过去。');
-  emitJson({'ok': true, 'module': target, 'task': task.id, 'landed': false},
-      out: out);
+  sink.writeln(
+    '界面还没落到「$target」（等了 ${waitForUi.inSeconds} 秒）。'
+    '唤醒已经写下了，软件起来就会过去。',
+  );
+  emitJson({
+    'ok': true,
+    'module': target,
+    'task': task.id,
+    'landed': false,
+  }, out: out);
   return 0;
 }

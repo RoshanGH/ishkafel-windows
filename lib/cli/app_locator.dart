@@ -13,6 +13,14 @@ import 'package:path/path.dart' as p;
 /// 路径往上数四层就是 app。它一直知道自己在哪，只是没人问过它。
 const String defaultAppPath = '/Applications/ishkafel.app';
 
+String? windowsDefaultAppPath([Map<String, String>? environment]) {
+  final env = environment ?? Platform.environment;
+  final programFiles =
+      env['ProgramFiles'] ?? Platform.environment['ProgramFiles'];
+  if (programFiles == null || programFiles.isEmpty) return null;
+  return p.Context(style: p.Style.windows).join(programFiles, 'Ishkafel');
+}
+
 /// 从 CLI 自己的路径推出 app 包的位置；不在包里就返回 null（不硬猜）
 ///
 /// **一路往上找 `.app`，不数固定层数**：包里的真实布局是
@@ -20,11 +28,31 @@ const String defaultAppPath = '/Applications/ishkafel.app';
 /// 外面那个 `cli/ishkafel` 只是按 uname 选一个的壳），从可执行文件算起是
 /// 六层，不是想当然的四层。写死层数的那版在单测里绿着，装进包里就失效——
 /// 真机上 doctor 报「缺凭据」而凭据明明就躺在包里。
-String? appPathFromExecutable(String executable) {
-  var dir = p.dirname(p.absolute(executable));
+String? appPathFromExecutable(String executable, {String? operatingSystem}) {
+  final windows =
+      (operatingSystem ??
+          (RegExp(r'^[A-Za-z]:[\\/]').hasMatch(executable) ||
+                  executable.contains(r'\')
+              ? 'windows'
+              : 'macos')) ==
+      'windows';
+  final context = p.Context(style: windows ? p.Style.windows : p.Style.posix);
+  final normalized = context.normalize(executable);
+  if (windows) {
+    final parts = context.split(normalized);
+    for (var i = parts.length - 2; i >= 1; i--) {
+      if (parts[i].toLowerCase() == 'cli' &&
+          i + 1 < parts.length &&
+          parts[i + 1].toLowerCase() == 'bin') {
+        return context.joinAll(parts.take(i));
+      }
+    }
+    return null;
+  }
+  var dir = context.dirname(context.absolute(normalized));
   while (true) {
     if (dir.endsWith('.app')) return dir;
-    final parent = p.dirname(dir);
+    final parent = context.dirname(dir);
     if (parent == dir) return null;
     dir = parent;
   }
@@ -38,17 +66,23 @@ String? resolveAppPath({
   Map<String, String>? env,
   String? executable,
   bool Function(String path)? exists,
+  String? operatingSystem,
 }) {
   final e = env ?? Platform.environment;
   final has = exists ?? (path) => Directory(path).existsSync();
+  final os = operatingSystem ?? Platform.operatingSystem;
 
   final fromEnv = (e['ISHKAFEL_APP'] ?? '').trim();
   if (fromEnv.isNotEmpty) return fromEnv;
 
-  final self = appPathFromExecutable(executable ?? Platform.resolvedExecutable);
+  final self = appPathFromExecutable(
+    executable ?? Platform.resolvedExecutable,
+    operatingSystem: os,
+  );
   if (self != null && has(self)) return self;
 
-  return has(defaultAppPath) ? defaultAppPath : null;
+  final fallback = os == 'windows' ? windowsDefaultAppPath(e) : defaultAppPath;
+  return fallback != null && has(fallback) ? fallback : null;
 }
 
 /// 把 GUI 拉起来。返回 null = 成功；非 null = **可以直接照做的中文原因**。
@@ -65,19 +99,34 @@ Future<String?> launchApp({
   Map<String, String>? env,
   String? executable,
   bool Function(String path)? exists,
+  String? operatingSystem,
 }) async {
-  final path = resolveAppPath(env: env, executable: executable, exists: exists);
+  final os = operatingSystem ?? Platform.operatingSystem;
+  final path = resolveAppPath(
+    env: env,
+    executable: executable,
+    exists: exists,
+    operatingSystem: os,
+  );
   if (path == null) {
+    final hint = os == 'windows'
+        ? r'  set ISHKAFEL_APP=C:\path\to\Ishkafel'
+        : '  export ISHKAFEL_APP=/path/to/ishkafel.app';
     return '找不到 ishkafel 的 app。命令行工具通常装在 app 里面，'
         '所以它一般能自己找到——找不到多半是这个工具被单独拷出来了。'
         '让用户把 app 的路径告诉你，然后：\n'
-        '  export ISHKAFEL_APP=/path/to/ishkafel.app';
+        '$hint';
   }
   try {
-    final r = await run('open', ['-a', path]);
+    final r = os == 'windows'
+        ? await run(p.join(path, 'ishkafel.exe'), const [])
+        : await run('open', ['-a', path]);
     if (r.exitCode != 0) {
+      final envHint = os == 'windows'
+          ? 'set ISHKAFEL_APP=<真实目录>'
+          : 'export ISHKAFEL_APP=<真实路径>';
       return '打不开 app（$path）。\n'
-          '· 路径不对的话用 export ISHKAFEL_APP=<真实路径> 指过去\n'
+          '· 路径不对的话用 $envHint 指过去\n'
           '· 路径没错就让用户手动双击一次看看，可能是被系统拦了\n'
           '原始报错：${'${r.stderr}'.trim()}';
     }
@@ -102,12 +151,30 @@ List<Directory> cliSecretsDirs({
   required Directory dataDir,
   String? executable,
   String? currentDir,
+  String? operatingSystem,
 }) {
-  final bundled = appPathFromExecutable(executable ?? Platform.resolvedExecutable);
+  final os = operatingSystem ?? Platform.operatingSystem;
+  final bundled = appPathFromExecutable(
+    executable ?? Platform.resolvedExecutable,
+    operatingSystem: os,
+  );
+  final context = p.Context(
+    style: os == 'windows' ? p.Style.windows : p.Style.posix,
+  );
   return [
-    Directory(p.join(dataDir.path, 'credentials')),
-    Directory(p.join(currentDir ?? Directory.current.path, '.secrets')),
+    Directory(context.join(dataDir.path, 'credentials')),
+    Directory(context.join(currentDir ?? Directory.current.path, '.secrets')),
     if (bundled != null)
-      Directory(p.join(bundled, 'Contents', 'Resources', 'cli', 'credentials')),
+      Directory(
+        os == 'windows'
+            ? context.join(bundled, 'cli', 'credentials')
+            : context.join(
+                bundled,
+                'Contents',
+                'Resources',
+                'cli',
+                'credentials',
+              ),
+      ),
   ];
 }

@@ -26,14 +26,21 @@ void main() {
 
   tearDown(() => temp.deleteSync(recursive: true));
 
+  File shim() =>
+      File(p.join(bin.path, Platform.isWindows ? 'ishkafel.cmd' : 'ishkafel'));
+
   Future<void> pump(WidgetTester tester, CliInstaller installer) =>
-      tester.pumpWidget(ProviderScope(
-        child: MaterialApp(
-          home: Scaffold(
+      tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(
               body: SingleChildScrollView(
-                  child: CliInstallCard(installer: installer))),
+                child: CliInstallCard(installer: installer),
+              ),
+            ),
+          ),
         ),
-      ));
+      );
 
   testWidgets('没装：给安装按钮，并说清楚装了能干嘛', (tester) async {
     await pump(tester, CliInstaller(binDir: bin, bundledCli: bundled));
@@ -57,7 +64,7 @@ void main() {
     });
     await tester.pump();
 
-    expect(File(p.join(bin.path, 'ishkafel')).existsSync(), isTrue);
+    expect(shim().existsSync(), isTrue);
     expect(find.text('已安装'), findsOneWidget);
     expect(find.textContaining('ishkafel --help'), findsWidgets);
     expect(find.text('移除'), findsOneWidget);
@@ -65,15 +72,15 @@ void main() {
 
   testWidgets('这版没带 CLI：不给能点的按钮，免得点了没反应', (tester) async {
     await pump(
-        tester,
-        CliInstaller(
-            binDir: bin, bundledCli: File(p.join(temp.path, '没有这个'))));
+      tester,
+      CliInstaller(binDir: bin, bundledCli: File(p.join(temp.path, '没有这个'))),
+    );
     expect(find.text('此版本未包含'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '安装'), findsNothing);
   });
 
   testWidgets('别人家的同名命令：说明为什么不动它，也不给按钮', (tester) async {
-    File(p.join(bin.path, 'ishkafel')).writeAsStringSync('别人家的');
+    shim().writeAsStringSync('别人家的');
     await pump(tester, CliInstaller(binDir: bin, bundledCli: bundled));
     expect(find.text('被占用'), findsOneWidget);
     expect(find.textContaining('不是本应用装的'), findsOneWidget);
@@ -85,7 +92,8 @@ void main() {
     oldSpot.parent.createSync(recursive: true);
     oldSpot.writeAsStringSync('#!/bin/sh\n');
     await tester.runAsync(
-        () => CliInstaller(binDir: bin, bundledCli: oldSpot).install());
+      () => CliInstaller(binDir: bin, bundledCli: oldSpot).install(),
+    );
     oldSpot.parent.deleteSync(recursive: true);
 
     await pump(tester, CliInstaller(binDir: bin, bundledCli: bundled));

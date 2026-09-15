@@ -77,3 +77,18 @@ Windows 特有失败集中于：
 5. CLI 中文输出未建立 Windows UTF-8 控制台契约。
 6. Windows runner 默认 1280×720 且没有最小窗口尺寸，时间线轨道显示不全。
 7. 文件路径直接进入 FFmpeg filtergraph，Windows 盘符冒号会被解释为过滤器语法。
+
+## 当前 Windows 回归结果
+
+2026-09-15 完成第一轮 Windows P0 收口后，在同一台基准机器重新执行完整验证：
+
+- `flutter test --machine`：退出码 0，全部测试通过、0 失败；
+- `flutter analyze`：退出码 0，`No issues found`；
+- `scripts/windows/build_cli.ps1`：退出码 0，生成 Windows x64 Dart AOT CLI；
+- `flutter build windows --release`：退出码 0，生成原生 Windows Release bundle；
+- `scripts/windows/test_renderer.ps1 -Mode Release`：退出码 0，成功输出包含中文的透明字幕 PNG，
+  SHA-256 为 `753BFA279552E3E98EA4B78B36D9083CAFBE2317F100DFD16BAA76CCF290E0D4`；
+- Release bundle 内的 `cli/bin/ishkafel.cmd --help`：退出码 0，中文帮助文本显示正常。
+
+原始基线的 62 个失败保留在上文作为迁移证据；当前结果证明路径、Windows 进程启动、
+CLI 安装入口、文件权限测试和架构守卫已经能够在 Windows 上完整回归。

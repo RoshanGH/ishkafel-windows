@@ -10,6 +10,7 @@ import 'package:ishkafel/core/analysis/analysis_pipeline.dart';
 import 'package:ishkafel/core/analysis/audio_extractor.dart';
 import 'package:ishkafel/core/analysis/boundary_snapper.dart';
 import 'package:ishkafel/core/analysis/providers.dart';
+import 'package:path/path.dart' as p;
 import 'package:ishkafel/core/analysis/scene_detector.dart';
 import 'package:ishkafel/core/analysis/segmentation_builder.dart';
 import 'package:ishkafel/core/analysis/silence_detector.dart';
@@ -26,18 +27,18 @@ import 'package:ishkafel/core/storage/file_task_repository.dart';
 class FakeAsr implements AsrProvider {
   @override
   Future<List<AsrSentence>> transcribe(String pcmPath) async => const [
-        AsrSentence(startMs: 0, endMs: 4100, text: '第一句'),
-        AsrSentence(startMs: 4100, endMs: 9200, text: '第二句'),
-      ];
+    AsrSentence(startMs: 0, endMs: 4100, text: '第一句'),
+    AsrSentence(startMs: 4100, endMs: 9200, text: '第二句'),
+  ];
 }
 
 /// 假语义切分：每句一个单元
 class FakeSplitter implements SemanticSplitter {
   @override
   Future<List<UnitDraft>> split(List<AsrSentence> sentences) async => [
-        for (final s in sentences)
-          UnitDraft(startMs: s.startMs, endMs: s.endMs, transcript: s.text),
-      ];
+    for (final s in sentences)
+      UnitDraft(startMs: s.startMs, endMs: s.endMs, transcript: s.text),
+  ];
 }
 
 const showinfoFixture =
@@ -53,58 +54,66 @@ void main() {
   tearDown(() async => tempDir.delete(recursive: true));
 
   /// 假分离器：按真实工具的行为造出两条 stem
-  VocalSeparator fakeSeparator({bool fail = false, List<int>? calls}) =>
-      VocalSeparator(
-        modelDir: Directory('${tempDir.path}/models'),
-        run: (bin, args) async {
-          calls?.add(1);
-          if (fail) return ProcessResult(1, 1, '', '模型下载失败');
-          final outDir = args[args.indexOf('--output_dir') + 1];
-          Directory(outDir).createSync(recursive: true);
-          // 产物名带模型标记（换模型要重算，见 VocalSeparator）
-          final stem =
-              '${args.first.split('/').last.split('.').first}-${VocalSeparator.modelTag}';
-          File('$outDir/$stem-人声.wav').writeAsStringSync('v');
-          File('$outDir/$stem-背景.wav').writeAsStringSync('b');
-          return ProcessResult(1, 0, '', '');
-        },
-      );
+  VocalSeparator fakeSeparator({
+    bool fail = false,
+    List<int>? calls,
+  }) => VocalSeparator(
+    modelDir: Directory('${tempDir.path}/models'),
+    run: (bin, args) async {
+      calls?.add(1);
+      if (fail) return ProcessResult(1, 1, '', '模型下载失败');
+      final outDir = args[args.indexOf('--output_dir') + 1];
+      Directory(outDir).createSync(recursive: true);
+      // 产物名带模型标记（换模型要重算，见 VocalSeparator）
+      final stem =
+          '${args.first.split('/').last.split('.').first}-${VocalSeparator.modelTag}';
+      File('$outDir/$stem-人声.wav').writeAsStringSync('v');
+      File('$outDir/$stem-背景.wav').writeAsStringSync('b');
+      return ProcessResult(1, 0, '', '');
+    },
+  );
 
-  AnalysisPipeline makePipeline(FileTaskRepository repo,
-          {VocalSeparator? separator}) =>
-      AnalysisPipeline(
-        separator: separator,
-        audio: AudioExtractor(run: (_, args) async {
-          // 假 ffmpeg 音频提取：写入 0.5 秒 16kHz 静音采样
-          await File(args[args.length - 1])
-              .writeAsBytes(Uint8List(16000)); // 8000 个零采样
-          return ProcessResult(1, 0, '', '');
-        }),
-        silence: const SilenceDetector(),
-        scenes: SceneDetector(
-            run: (_, _) async => ProcessResult(1, 0, '', showinfoFixture)),
-        asr: FakeAsr(),
-        splitter: FakeSplitter(),
-        builder: const SegmentationBuilder(snapper: BoundarySnapper()),
-        repository: repo,
-        workDir: Directory('${tempDir.path}/work'),
-        clock: () => DateTime.utc(2026, 7, 29, 12),
-      );
+  AnalysisPipeline makePipeline(
+    FileTaskRepository repo, {
+    VocalSeparator? separator,
+  }) => AnalysisPipeline(
+    separator: separator,
+    audio: AudioExtractor(
+      run: (_, args) async {
+        // 假 ffmpeg 音频提取：写入 0.5 秒 16kHz 静音采样
+        await File(
+          args[args.length - 1],
+        ).writeAsBytes(Uint8List(16000)); // 8000 个零采样
+        return ProcessResult(1, 0, '', '');
+      },
+    ),
+    silence: const SilenceDetector(),
+    scenes: SceneDetector(
+      run: (_, _) async => ProcessResult(1, 0, '', showinfoFixture),
+    ),
+    asr: FakeAsr(),
+    splitter: FakeSplitter(),
+    builder: const SegmentationBuilder(snapper: BoundarySnapper()),
+    repository: repo,
+    workDir: Directory('${tempDir.path}/work'),
+    clock: () => DateTime.utc(2026, 7, 29, 12),
+  );
 
   RenewTask makeTask({String id = 't1', String? sourcePath}) => RenewTask(
-        id: id,
-        name: '测试片',
-        sourcePath: sourcePath ?? '/v/a.mp4',
-        videoInfo: const VideoInfo(
-            width: 1080,
-            height: 1920,
-            duration: Duration(milliseconds: 9200),
-            fps: 30,
-            fileSizeBytes: 1),
-        status: RenewTaskStatus.analyzing,
-        createdAt: DateTime.utc(2026, 7, 29),
-        updatedAt: DateTime.utc(2026, 7, 29),
-      );
+    id: id,
+    name: '测试片',
+    sourcePath: sourcePath ?? '/v/a.mp4',
+    videoInfo: const VideoInfo(
+      width: 1080,
+      height: 1920,
+      duration: Duration(milliseconds: 9200),
+      fps: 30,
+      fileSizeBytes: 1,
+    ),
+    status: RenewTaskStatus.analyzing,
+    createdAt: DateTime.utc(2026, 7, 29),
+    updatedAt: DateTime.utc(2026, 7, 29),
+  );
 
   test('analyze 产出两层结构并落库，状态转 awaitingCut', () async {
     final repo = FileTaskRepository(tempDir);
@@ -138,9 +147,12 @@ void main() {
 
     await makePipeline(repo).analyze(task);
 
-    expect(analysisPcmPath(workDir, 't1'), '${workDir.path}/t1.pcm');
-    expect(await File(analysisPcmPath(workDir, 't1')).exists(), isFalse,
-        reason: 'ASR 是它唯一的读者；时间线波形存的是算好的包络，不是 PCM');
+    expect(analysisPcmPath(workDir, 't1'), p.join(workDir.path, 't1.pcm'));
+    expect(
+      await File(analysisPcmPath(workDir, 't1')).exists(),
+      isFalse,
+      reason: 'ASR 是它唯一的读者；时间线波形存的是算好的包络，不是 PCM',
+    );
   });
 
   test('videoInfo 缺失抛 StateError 且不落库变更', () async {
@@ -154,7 +166,9 @@ void main() {
       updatedAt: DateTime.utc(2026, 7, 29),
     );
     await expectLater(
-        makePipeline(repo).analyze(noInfo), throwsA(isA<StateError>()));
+      makePipeline(repo).analyze(noInfo),
+      throwsA(isA<StateError>()),
+    );
     expect(await repo.findById('t2'), isNull);
   });
 
@@ -184,36 +198,41 @@ void main() {
       ShotTagger? shotTagger,
       TagVocabularySource? vocabulary,
       ThumbnailService? thumbnails,
-    }) =>
-        AnalysisPipeline(
-          audio: AudioExtractor(run: (_, args) async {
-            await File(args.last).writeAsBytes(Uint8List(16000));
-            return ProcessResult(1, 0, '', '');
-          }),
-          silence: const SilenceDetector(),
-          scenes: SceneDetector(
-              run: (_, _) async => ProcessResult(1, 0, '', showinfoFixture)),
-          asr: FakeAsr(),
-          splitter: FakeSplitter(),
-          builder: const SegmentationBuilder(snapper: BoundarySnapper()),
-          repository: repo,
-          workDir: Directory('${tempDir.path}/work'),
-          clock: () => DateTime.utc(2026, 7, 30),
-          unitTagger: unitTagger,
-          shotTagger: shotTagger,
-          thumbnails: thumbnails,
-          vocabulary: vocabulary,
-        );
-
-    ThumbnailService fakeThumbnails() => ThumbnailService(run: (_, args) async {
-          await File(args.last).writeAsBytes(Uint8List.fromList([1, 2, 3]));
+    }) => AnalysisPipeline(
+      audio: AudioExtractor(
+        run: (_, args) async {
+          await File(args.last).writeAsBytes(Uint8List(16000));
           return ProcessResult(1, 0, '', '');
-        });
+        },
+      ),
+      silence: const SilenceDetector(),
+      scenes: SceneDetector(
+        run: (_, _) async => ProcessResult(1, 0, '', showinfoFixture),
+      ),
+      asr: FakeAsr(),
+      splitter: FakeSplitter(),
+      builder: const SegmentationBuilder(snapper: BoundarySnapper()),
+      repository: repo,
+      workDir: Directory('${tempDir.path}/work'),
+      clock: () => DateTime.utc(2026, 7, 30),
+      unitTagger: unitTagger,
+      shotTagger: shotTagger,
+      thumbnails: thumbnails,
+      vocabulary: vocabulary,
+    );
+
+    ThumbnailService fakeThumbnails() => ThumbnailService(
+      run: (_, args) async {
+        await File(args.last).writeAsBytes(Uint8List.fromList([1, 2, 3]));
+        return ProcessResult(1, 0, '', '');
+      },
+    );
 
     test('视觉镜头打标并发进行（串行时 32 个镜头要跑近十分钟）', () async {
       final repo = FileTaskRepository(tempDir);
-      final task = makeTask()
-          .copyWith(shotTagGroups: [const TagGroupRef(id: 136, name: '画面类型')]);
+      final task = makeTask().copyWith(
+        shotTagGroups: [const TagGroupRef(id: 136, name: '画面类型')],
+      );
       await repo.save(task);
 
       var inFlight = 0;
@@ -230,9 +249,11 @@ void main() {
         if (!gate.isCompleted && inFlight >= cap) gate.complete();
       }
 
-      unawaited(Future<void>.delayed(const Duration(seconds: 2), () {
-        if (!gate.isCompleted) gate.complete();
-      }));
+      unawaited(
+        Future<void>.delayed(const Duration(seconds: 2), () {
+          if (!gate.isCompleted) gate.complete();
+        }),
+      );
 
       await taggingPipeline(
         repo,
@@ -250,36 +271,43 @@ void main() {
         ),
         thumbnails: fakeThumbnails(),
         vocabulary: fakeSource({
-          136: const ['开箱']
+          136: const ['开箱'],
         }),
       ).analyze(task);
 
       expect(calls, greaterThan(1), reason: '前提：确实跑了多个镜头的打标');
-      expect(peak, greaterThan(1),
-          reason: '串行打标下峰值并发恒为 1。真机实测单个镜头的视觉打标约 18 秒，'
-              '32 个镜头串行就是近十分钟，用户只能对着「分析中」干等');
-      expect(peak, lessThanOrEqualTo(cap),
-          reason: '云端 API 有并发与配额限制，不能无上限地打出去');
+      expect(
+        peak,
+        greaterThan(1),
+        reason:
+            '串行打标下峰值并发恒为 1。真机实测单个镜头的视觉打标约 18 秒，'
+            '32 个镜头串行就是近十分钟，用户只能对着「分析中」干等',
+      );
+      expect(peak, lessThanOrEqualTo(cap), reason: '云端 API 有并发与配额限制，不能无上限地打出去');
     });
 
     test('配置 taggers 后单元按本任务的单元标签组打标', () async {
       final repo = FileTaskRepository(tempDir);
       final task = makeTask().copyWith(
-          unitTagGroups: [const TagGroupRef(id: 1279, name: '衣清.消毒液')]);
+        unitTagGroups: [const TagGroupRef(id: 1279, name: '衣清.消毒液')],
+      );
       await repo.save(task);
       final tagger = _RecordingUnitTagger(reply: const ['功效演示']);
 
-      final result = await taggingPipeline(repo,
-              unitTagger: tagger,
-              vocabulary: fakeSource({
-                1279: const ['功效演示', '价格机制']
-              }))
-          .analyze(task);
+      final result = await taggingPipeline(
+        repo,
+        unitTagger: tagger,
+        vocabulary: fakeSource({
+          1279: const ['功效演示', '价格机制'],
+        }),
+      ).analyze(task);
 
       expect(tagger.calls, result.units!.length);
       expect(result.units!.first.tags, ['功效演示']);
-      expect(tagger.vocabularies.first, ['功效演示', '价格机制'],
-          reason: '词表必须来自本任务选的那个标签组');
+      expect(tagger.vocabularies.first, [
+        '功效演示',
+        '价格机制',
+      ], reason: '词表必须来自本任务选的那个标签组');
       expect(asked, [1279]);
     });
 
@@ -291,16 +319,24 @@ void main() {
       });
       final tagger = _RecordingUnitTagger(reply: const []);
       final a = makeTask().copyWith(
-          unitTagGroups: [const TagGroupRef(id: 1279, name: '衣清.消毒液')]);
-      final b = RenewTask.fromJson(makeTask().toJson())
-          .copyWith(unitTagGroups: [const TagGroupRef(id: 1281, name: '衣清.立白卫仕')]);
+        unitTagGroups: [const TagGroupRef(id: 1279, name: '衣清.消毒液')],
+      );
+      final b = RenewTask.fromJson(
+        makeTask().toJson(),
+      ).copyWith(unitTagGroups: [const TagGroupRef(id: 1281, name: '衣清.立白卫仕')]);
       await repo.save(a);
 
-      await taggingPipeline(repo, unitTagger: tagger, vocabulary: source)
-          .analyze(a);
+      await taggingPipeline(
+        repo,
+        unitTagger: tagger,
+        vocabulary: source,
+      ).analyze(a);
       final vocabA = tagger.vocabularies.last;
-      await taggingPipeline(repo, unitTagger: tagger, vocabulary: source)
-          .analyze(b);
+      await taggingPipeline(
+        repo,
+        unitTagger: tagger,
+        vocabulary: source,
+      ).analyze(b);
 
       expect(vocabA, ['功效演示']);
       expect(tagger.vocabularies.last, ['开箱']);
@@ -308,8 +344,9 @@ void main() {
 
     test('镜头层按视觉镜头标签组打标（抽帧 + 该组词表）', () async {
       final repo = FileTaskRepository(tempDir);
-      final task = makeTask()
-          .copyWith(shotTagGroups: [const TagGroupRef(id: 136, name: '画面类型')]);
+      final task = makeTask().copyWith(
+        shotTagGroups: [const TagGroupRef(id: 136, name: '画面类型')],
+      );
       await repo.save(task);
       var shotCalls = 0;
 
@@ -318,12 +355,14 @@ void main() {
         shotTagger: _FakeShotTagger(onTag: () => shotCalls++),
         thumbnails: fakeThumbnails(),
         vocabulary: fakeSource({
-          136: const ['开箱']
+          136: const ['开箱'],
         }),
       ).analyze(task);
 
-      final totalShots =
-          result.units!.fold<int>(0, (n, u) => n + u.shots.length);
+      final totalShots = result.units!.fold<int>(
+        0,
+        (n, u) => n + u.shots.length,
+      );
       expect(shotCalls, totalShots);
       expect(result.units!.first.shots.first.tags, ['开箱']);
       expect(asked, [136]);
@@ -335,12 +374,13 @@ void main() {
       await repo.save(task);
       final tagger = _RecordingUnitTagger(reply: const ['功效演示']);
 
-      final result = await taggingPipeline(repo,
-              unitTagger: tagger,
-              vocabulary: fakeSource({
-                1279: const ['功效演示']
-              }))
-          .analyze(task);
+      final result = await taggingPipeline(
+        repo,
+        unitTagger: tagger,
+        vocabulary: fakeSource({
+          1279: const ['功效演示'],
+        }),
+      ).analyze(task);
 
       expect(tagger.calls, 0);
       expect(asked, isEmpty);
@@ -357,13 +397,15 @@ void main() {
 
       final repo = FileTaskRepository(tempDir);
       final task = makeTask().copyWith(
-          unitTagGroups: [const TagGroupRef(id: 1279, name: '衣清.消毒液')]);
+        unitTagGroups: [const TagGroupRef(id: 1279, name: '衣清.消毒液')],
+      );
       await repo.save(task);
 
-      final result = await taggingPipeline(repo,
-              unitTagger: _RecordingUnitTagger(reply: const ['功效演示']),
-              vocabulary: _ThrowingVocabularySource())
-          .analyze(task);
+      final result = await taggingPipeline(
+        repo,
+        unitTagger: _RecordingUnitTagger(reply: const ['功效演示']),
+        vocabulary: _ThrowingVocabularySource(),
+      ).analyze(task);
 
       expect(result.status, RenewTaskStatus.ready);
       for (final u in result.units!) {
@@ -380,14 +422,16 @@ void main() {
 
       final repo = FileTaskRepository(tempDir);
       final task = makeTask().copyWith(
-          unitTagGroups: [const TagGroupRef(id: 1279, name: '空组')]);
+        unitTagGroups: [const TagGroupRef(id: 1279, name: '空组')],
+      );
       await repo.save(task);
       final tagger = _RecordingUnitTagger(reply: const ['功效演示']);
 
-      await taggingPipeline(repo,
-              unitTagger: tagger,
-              vocabulary: fakeSource({1279: const []}))
-          .analyze(task);
+      await taggingPipeline(
+        repo,
+        unitTagger: tagger,
+        vocabulary: fakeSource({1279: const []}),
+      ).analyze(task);
 
       expect(tagger.calls, 0);
       expect(logs.join(), contains('空组'));
@@ -396,15 +440,17 @@ void main() {
     test('unitTagger 抛异常不中断分析，该单元 tags 留空', () async {
       final repo = FileTaskRepository(tempDir);
       final task = makeTask().copyWith(
-          unitTagGroups: [const TagGroupRef(id: 1279, name: '衣清.消毒液')]);
+        unitTagGroups: [const TagGroupRef(id: 1279, name: '衣清.消毒液')],
+      );
       await repo.save(task);
 
-      final result = await taggingPipeline(repo,
-              unitTagger: _ThrowingUnitTagger(),
-              vocabulary: fakeSource({
-                1279: const ['功效演示']
-              }))
-          .analyze(task);
+      final result = await taggingPipeline(
+        repo,
+        unitTagger: _ThrowingUnitTagger(),
+        vocabulary: fakeSource({
+          1279: const ['功效演示'],
+        }),
+      ).analyze(task);
 
       expect(result.units, isNotNull);
       for (final u in result.units!) {
@@ -421,8 +467,10 @@ void main() {
       final task = makeTask();
       await repo.save(task);
 
-      final done = await makePipeline(repo, separator: fakeSeparator())
-          .analyze(task);
+      final done = await makePipeline(
+        repo,
+        separator: fakeSeparator(),
+      ).analyze(task);
 
       expect(done.vocalsPath, endsWith('-人声.wav'));
       expect(done.backgroundPath, endsWith('-背景.wav'));
@@ -434,9 +482,10 @@ void main() {
       final task = makeTask();
       await repo.save(task);
 
-      final done =
-          await makePipeline(repo, separator: fakeSeparator(fail: true))
-              .analyze(task);
+      final done = await makePipeline(
+        repo,
+        separator: fakeSeparator(fail: true),
+      ).analyze(task);
 
       expect(done.units, isNotNull, reason: '为了一条音轨把几分钟的分析废掉不划算');
       expect(done.vocalsPath, isNull, reason: '没成功就得是 null，不能给个不存在的路径');
@@ -453,7 +502,6 @@ void main() {
       expect(done.vocalsPath, isNull);
     });
   });
-
 
   /// 人声轨**归任务所有**，两条任务之间不共用。
   ///
@@ -481,25 +529,33 @@ void main() {
 
       final a = makeTask(id: '任务A', sourcePath: source.path);
       await repo.save(a);
-      final doneA =
-          await makePipeline(repo, separator: fakeSeparator()).analyze(a);
-      expect(File(doneA.vocalsPath!).existsSync(), isTrue,
-          reason: '前提：A 自己得先分离成功');
+      final doneA = await makePipeline(
+        repo,
+        separator: fakeSeparator(),
+      ).analyze(a);
+      expect(
+        File(doneA.vocalsPath!).existsSync(),
+        isTrue,
+        reason: '前提：A 自己得先分离成功',
+      );
 
       // 删掉任务 A——软件按规矩清光它名下的产物
       Directory('${tempDir.path}/work/stems/任务A').deleteSync(recursive: true);
 
       final b = makeTask(id: '任务B', sourcePath: source.path);
       await repo.save(b);
-      final doneB =
-          await makePipeline(repo, separator: fakeSeparator()).analyze(b);
+      final doneB = await makePipeline(
+        repo,
+        separator: fakeSeparator(),
+      ).analyze(b);
 
-      expect(doneB.vocalsPath, isNotNull,
-          reason: 'B 有自己的人声轨，不该因为 A 被删就没了');
-      expect(File(doneB.vocalsPath!).existsSync(), isTrue,
-          reason: '存的路径必须真的有文件——指向空地址等于没有');
-      expect(doneB.vocalsPath, contains('任务B'),
-          reason: '产物要落在 B 自己名下，不能借用别人的');
+      expect(doneB.vocalsPath, isNotNull, reason: 'B 有自己的人声轨，不该因为 A 被删就没了');
+      expect(
+        File(doneB.vocalsPath!).existsSync(),
+        isTrue,
+        reason: '存的路径必须真的有文件——指向空地址等于没有',
+      );
+      expect(doneB.vocalsPath, contains('任务B'), reason: '产物要落在 B 自己名下，不能借用别人的');
     });
 
     test('两条任务各分离各的，谁也不借用谁的产物', () async {
@@ -509,19 +565,24 @@ void main() {
 
       final a = makeTask(id: '任务A', sourcePath: source.path);
       await repo.save(a);
-      final doneA =
-          await makePipeline(repo, separator: fakeSeparator(calls: calls))
-              .analyze(a);
+      final doneA = await makePipeline(
+        repo,
+        separator: fakeSeparator(calls: calls),
+      ).analyze(a);
 
       final b = makeTask(id: '任务B', sourcePath: source.path);
       await repo.save(b);
-      final doneB =
-          await makePipeline(repo, separator: fakeSeparator(calls: calls))
-              .analyze(b);
+      final doneB = await makePipeline(
+        repo,
+        separator: fakeSeparator(calls: calls),
+      ).analyze(b);
 
       expect(calls, hasLength(2), reason: '各跑各的分离，不共用一份产物');
-      expect(doneA.vocalsPath, isNot(doneB.vocalsPath),
-          reason: '两条任务的人声轨必须是两个文件');
+      expect(
+        doneA.vocalsPath,
+        isNot(doneB.vocalsPath),
+        reason: '两条任务的人声轨必须是两个文件',
+      );
       expect(File(doneA.vocalsPath!).existsSync(), isTrue);
       expect(File(doneB.vocalsPath!).existsSync(), isTrue);
     });
@@ -530,7 +591,10 @@ void main() {
       final repo = FileTaskRepository(tempDir);
       final source = makeSource();
       final calls = <int>[];
-      final pipeline = makePipeline(repo, separator: fakeSeparator(calls: calls));
+      final pipeline = makePipeline(
+        repo,
+        separator: fakeSeparator(calls: calls),
+      );
 
       final a = makeTask(id: '任务A', sourcePath: source.path);
       await repo.save(a);
@@ -557,9 +621,12 @@ void main() {
       );
 
       expect(
-          await makePipeline(repo, separator: fakeSeparator())
-              .separateVocals(blank),
-          isNull);
+        await makePipeline(
+          repo,
+          separator: fakeSeparator(),
+        ).separateVocals(blank),
+        isNull,
+      );
     });
 
     test('句子与切分照旧复用——省下的 ASR 与 LLM 不能一起赔掉', () async {
@@ -568,20 +635,23 @@ void main() {
 
       final a = makeTask(id: '任务A', sourcePath: source.path);
       await repo.save(a);
-      final doneA =
-          await makePipeline(repo, separator: fakeSeparator()).analyze(a);
+      final doneA = await makePipeline(
+        repo,
+        separator: fakeSeparator(),
+      ).analyze(a);
 
       final b = makeTask(id: '任务B', sourcePath: source.path);
       await repo.save(b);
-      final doneB =
-          await makePipeline(repo, separator: fakeSeparator()).analyze(b);
+      final doneB = await makePipeline(
+        repo,
+        separator: fakeSeparator(),
+      ).analyze(b);
 
       // 同一条片子切出来的单元数必须一样——这正是按内容缓存要保住的东西
       expect(doneB.units!.length, doneA.units!.length);
       expect(doneB.units![0].endMs, doneA.units![0].endMs);
     });
   });
-
 }
 
 /// 假词表源：按组 id 给不同词表，并记录被问过的组 id
@@ -610,17 +680,20 @@ class _RecordingUnitTagger extends UnitTagger {
   int calls = 0;
 
   _RecordingUnitTagger({required this.reply})
-      : super(
-            chat: ArkChatClient(
-                apiKey: 'x',
-                post: (_, _, _) async =>
-                    const JsonPostResult(statusCode: 200, body: '{}')));
+    : super(
+        chat: ArkChatClient(
+          apiKey: 'x',
+          post: (_, _, _) async =>
+              const JsonPostResult(statusCode: 200, body: '{}'),
+        ),
+      );
 
   @override
-  Future<ShotUnderstanding> understand(
-      {required String transcript,
-      required List<TagDimension> dimensions,
-      String? constraint}) async {
+  Future<ShotUnderstanding> understand({
+    required String transcript,
+    required List<TagDimension> dimensions,
+    String? constraint,
+  }) async {
     calls++;
     vocabularies.add([for (final d in dimensions) ...d.vocabulary]);
     return ShotUnderstanding(tags: reply, rawReply: '{"tags":$reply}');
@@ -629,16 +702,19 @@ class _RecordingUnitTagger extends UnitTagger {
 
 class _ThrowingUnitTagger extends UnitTagger {
   _ThrowingUnitTagger()
-      : super(
-            chat: ArkChatClient(
-                apiKey: 'x',
-                post: (_, _, _) async =>
-                    const JsonPostResult(statusCode: 200, body: '{}')));
+    : super(
+        chat: ArkChatClient(
+          apiKey: 'x',
+          post: (_, _, _) async =>
+              const JsonPostResult(statusCode: 200, body: '{}'),
+        ),
+      );
   @override
-  Future<ShotUnderstanding> understand(
-      {required String transcript,
-      required List<TagDimension> dimensions,
-      String? constraint}) async {
+  Future<ShotUnderstanding> understand({
+    required String transcript,
+    required List<TagDimension> dimensions,
+    String? constraint,
+  }) async {
     throw StateError('打标服务不可用');
   }
 }
@@ -649,16 +725,19 @@ class _FakeShotTagger extends ShotTagger {
   final void Function() onTag;
   final Future<void> Function()? work;
   _FakeShotTagger({required this.onTag, this.work})
-      : super(
-            chat: ArkChatClient(
-                apiKey: 'x',
-                post: (_, _, _) async =>
-                    const JsonPostResult(statusCode: 200, body: '{}')));
+    : super(
+        chat: ArkChatClient(
+          apiKey: 'x',
+          post: (_, _, _) async =>
+              const JsonPostResult(statusCode: 200, body: '{}'),
+        ),
+      );
   @override
-  Future<ShotUnderstanding> understand(
-      {required List<List<int>> frames,
-      required List<TagDimension> dimensions,
-      String? constraint}) async {
+  Future<ShotUnderstanding> understand({
+    required List<List<int>> frames,
+    required List<TagDimension> dimensions,
+    String? constraint,
+  }) async {
     onTag();
     if (work != null) await work!();
     return const ShotUnderstanding(tags: ['开箱'], description: '开箱画面');
@@ -681,8 +760,7 @@ void _multiGroupVocabulary() {
         }
       }
 
-      expect(merged, ['真人口播', '产品特写', '情绪激动'],
-          reason: '重复词只会稀释提示词，去重按标签名');
+      expect(merged, ['真人口播', '产品特写', '情绪激动'], reason: '重复词只会稀释提示词，去重按标签名');
       expect(asked, [1, 2], reason: '每个选中的组都要拉一次');
     });
   });

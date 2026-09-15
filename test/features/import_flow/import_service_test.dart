@@ -9,10 +9,16 @@ import 'package:ishkafel/core/storage/file_task_repository.dart';
 import 'package:ishkafel/features/import_flow/import_exception.dart';
 import 'package:ishkafel/features/import_flow/import_service.dart';
 import 'dart:convert';
+import 'package:path/path.dart' as p;
 
 const probeJson = {
   'streams': [
-    {'codec_type': 'video', 'width': 1080, 'height': 1920, 'r_frame_rate': '30/1'},
+    {
+      'codec_type': 'video',
+      'width': 1080,
+      'height': 1920,
+      'r_frame_rate': '30/1',
+    },
   ],
   'format': {'duration': '96.2', 'size': '100'},
 };
@@ -30,11 +36,14 @@ void main() {
     service = ImportService(
       repository: repo,
       ffprobe: FfprobeService(
-          run: (_, _) async => ProcessResult(1, 0, jsonEncode(probeJson), '')),
-      thumbnails: ThumbnailService(run: (_, args) async {
-        ffmpegCalls.add(args);
-        return ProcessResult(1, 0, '', '');
-      }),
+        run: (_, _) async => ProcessResult(1, 0, jsonEncode(probeJson), ''),
+      ),
+      thumbnails: ThumbnailService(
+        run: (_, args) async {
+          ffmpegCalls.add(args);
+          return ProcessResult(1, 0, '', '');
+        },
+      ),
       coversDir: Directory('${tempDir.path}/covers'),
       idGenerator: () => 'fixed-id',
       clock: () => DateTime.utc(2026, 7, 29, 12),
@@ -49,7 +58,7 @@ void main() {
     expect(task.name, '滴露_测试片');
     expect(task.status, RenewTaskStatus.analyzing);
     expect(task.videoInfo!.width, 1080);
-    expect(task.coverPath, endsWith('covers/fixed-id.jpg'));
+    expect(task.coverPath, endsWith(p.join('covers', 'fixed-id.jpg')));
     // 封面命令确实指向源视频
     expect(ffmpegCalls.single, contains('/videos/滴露_测试片.mp4'));
     // 已落库
@@ -93,21 +102,30 @@ void main() {
       final service2 = ImportService(
         repository: repo,
         ffprobe: FfprobeService(
-            run: (_, _) async => ProcessResult(1, 0, jsonEncode(badFpsJson), '')),
-        thumbnails: ThumbnailService(run: (_, args) async {
-          coverCalls.add(args);
-          return ProcessResult(1, 0, '', '');
-        }),
+          run: (_, _) async => ProcessResult(1, 0, jsonEncode(badFpsJson), ''),
+        ),
+        thumbnails: ThumbnailService(
+          run: (_, args) async {
+            coverCalls.add(args);
+            return ProcessResult(1, 0, '', '');
+          },
+        ),
         coversDir: Directory('${tempDir.path}/covers'),
         idGenerator: () => 'bad-fps',
       );
 
       await expectLater(
         service2.importLocalFile('/videos/坏帧率.mp4'),
-        throwsA(isA<ImportException>()
-            .having((e) => e.message, 'message', contains('帧率'))
-            // 面向用户的提示不应出现原始异常文本
-            .having((e) => e.message, 'message', isNot(contains('Exception')))),
+        throwsA(
+          isA<ImportException>()
+              .having((e) => e.message, 'message', contains('帧率'))
+              // 面向用户的提示不应出现原始异常文本
+              .having(
+                (e) => e.message,
+                'message',
+                isNot(contains('Exception')),
+              ),
+        ),
       );
       expect(coverCalls, isEmpty);
       expect(await repo.findAll(), isEmpty);
@@ -116,15 +134,23 @@ void main() {
     test('ffprobe 执行失败时也给中文提示而非原始异常文本', () async {
       final failing = ImportService(
         repository: repo,
-        ffprobe:
-            FfprobeService(run: (_, _) async => ProcessResult(1, 1, '', 'bad file')),
-        thumbnails: ThumbnailService(run: (_, _) async => ProcessResult(1, 0, '', '')),
+        ffprobe: FfprobeService(
+          run: (_, _) async => ProcessResult(1, 1, '', 'bad file'),
+        ),
+        thumbnails: ThumbnailService(
+          run: (_, _) async => ProcessResult(1, 0, '', ''),
+        ),
         coversDir: Directory('${tempDir.path}/covers'),
       );
       await expectLater(
         failing.importLocalFile('/v/x.mp4'),
-        throwsA(isA<ImportException>().having(
-            (e) => e.message, 'message', isNot(contains('exit=')))),
+        throwsA(
+          isA<ImportException>().having(
+            (e) => e.message,
+            'message',
+            isNot(contains('exit=')),
+          ),
+        ),
       );
     });
 
@@ -132,14 +158,22 @@ void main() {
       final missing = ImportService(
         repository: repo,
         ffprobe: FfprobeService(
-            run: (_, _) async => throw const MediaToolMissingException('ffprobe')),
-        thumbnails: ThumbnailService(run: (_, _) async => ProcessResult(1, 0, '', '')),
+          run: (_, _) async => throw const MediaToolMissingException('ffprobe'),
+        ),
+        thumbnails: ThumbnailService(
+          run: (_, _) async => ProcessResult(1, 0, '', ''),
+        ),
         coversDir: Directory('${tempDir.path}/covers'),
       );
       await expectLater(
         missing.importLocalFile('/v/x.mp4'),
-        throwsA(isA<ImportException>().having(
-            (e) => e.message, 'message', contains('brew install ffmpeg'))),
+        throwsA(
+          isA<ImportException>().having(
+            (e) => e.message,
+            'message',
+            contains('brew install ffmpeg'),
+          ),
+        ),
       );
     });
   });
@@ -147,8 +181,12 @@ void main() {
   test('ffprobe 失败时不落库并向上抛错', () async {
     final failing = ImportService(
       repository: repo,
-      ffprobe: FfprobeService(run: (_, _) async => ProcessResult(1, 1, '', 'bad file')),
-      thumbnails: ThumbnailService(run: (_, _) async => ProcessResult(1, 0, '', '')),
+      ffprobe: FfprobeService(
+        run: (_, _) async => ProcessResult(1, 1, '', 'bad file'),
+      ),
+      thumbnails: ThumbnailService(
+        run: (_, _) async => ProcessResult(1, 0, '', ''),
+      ),
       coversDir: Directory('${tempDir.path}/covers'),
     );
     await expectLater(failing.importLocalFile('/v/x.mp4'), throwsException);

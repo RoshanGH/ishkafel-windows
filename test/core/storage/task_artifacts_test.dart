@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/core/storage/task_artifacts.dart';
+import 'package:path/path.dart' as p;
 
 late Directory _root;
 
@@ -12,7 +13,9 @@ void _file(String relative, [int bytes = 10]) {
 }
 
 List<String> _names(List<FileSystemEntity> entities) =>
-    entities.map((e) => e.path.replaceFirst('${_root.path}/', '')).toList()
+    entities
+        .map((e) => p.relative(e.path, from: _root.path).replaceAll(r'\', '/'))
+        .toList()
       ..sort();
 
 void main() {
@@ -31,19 +34,17 @@ void main() {
       _file('voices/ab/u0.wav');
       _file('picked_thumbs/ab/100.jpg');
 
-      expect(
-          _names(TaskArtifacts(_root).of('ab')),
-          [
-            'analysis_work/ab.pcm',
-            'analysis_work/ab_frames',
-            'analysis_work/ab_thumbs.raw',
-            'analysis_work/stems/ab',
-            'covers/ab.jpg',
-            'export_work/ab',
-            'picked_thumbs/ab',
-            'speed_fit/ab',
-            'voices/ab',
-          ]);
+      expect(_names(TaskArtifacts(_root).of('ab')), [
+        'analysis_work/ab.pcm',
+        'analysis_work/ab_frames',
+        'analysis_work/ab_thumbs.raw',
+        'analysis_work/stems/ab',
+        'covers/ab.jpg',
+        'export_work/ab',
+        'picked_thumbs/ab',
+        'speed_fit/ab',
+        'voices/ab',
+      ]);
     });
 
     test('不认 id 只是前缀相同的别人家产物', () {
@@ -75,8 +76,11 @@ void main() {
     test('封面按去掉扩展名之后的名字判归属', () {
       _file('covers/ab.jpg');
 
-      expect(TaskArtifacts(_root).orphans({'ab'}), isEmpty,
-          reason: '拿 ab.jpg 整个去比的话，活着的任务的封面会被当成孤儿删掉');
+      expect(
+        TaskArtifacts(_root).orphans({'ab'}),
+        isEmpty,
+        reason: '拿 ab.jpg 整个去比的话，活着的任务的封面会被当成孤儿删掉',
+      );
     });
 
     test('删掉之后返回实际释放的字节数', () {
@@ -87,7 +91,10 @@ void main() {
       final freed = artifacts.delete(artifacts.orphans({'alive'}));
 
       expect(freed, 500);
-      expect(Directory('${_root.path}/preview_video/ghost').existsSync(), isFalse);
+      expect(
+        Directory('${_root.path}/preview_video/ghost').existsSync(),
+        isFalse,
+      );
     });
 
     test('一个任务都没有时，所有产物都是孤儿', () {

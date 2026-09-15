@@ -16,8 +16,9 @@ void main() {
     Directory('${dir.path}/tasks').createSync(recursive: true);
     // open 现在通过仓储解析任务（顺带支持 #编号），档要能被 fromJson 读出
     File('${dir.path}/tasks/t1.json').writeAsStringSync(
-        '{"id":"t1","name":"测试","sourcePath":"/v/t1.mp4","status":"ready",'
-        '"createdAt":"2026-08-19T00:00:00Z","updatedAt":"2026-08-19T00:00:00Z"}');
+      '{"id":"t1","name":"测试","sourcePath":"/v/t1.mp4","status":"ready",'
+      '"createdAt":"2026-08-19T00:00:00Z","updatedAt":"2026-08-19T00:00:00Z"}',
+    );
   });
   tearDown(() => dir.deleteSync(recursive: true));
 
@@ -34,7 +35,10 @@ void main() {
       },
     );
     expect(code, 0);
-    expect(calls.single.first, 'open');
+    expect(
+      calls.single.first,
+      Platform.isWindows ? endsWith(r'Ishkafel\ishkafel.exe') : 'open',
+    );
     // 意图走唤醒文件：--args 只在冷启动生效，app 在跑时会被静默丢弃
     expect(calls.single.any((a) => a.contains('--task')), isFalse);
     expect(consumeUiWake(dir)!.taskId, 't1');
@@ -46,13 +50,18 @@ void main() {
       rest: ['t1'],
       dataDir: dir,
       appExists: (_) => true,
-      env: const {'ISHKAFEL_APP': '/tmp/别处/ishkafel.app'},
+      env: Platform.isWindows
+          ? const {'ISHKAFEL_APP': r'C:\别处\Ishkafel'}
+          : const {'ISHKAFEL_APP': '/tmp/别处/ishkafel.app'},
       run: (bin, args) async {
         calls.add([bin, ...args]);
         return ProcessResult(0, 0, '', '');
       },
     );
-    expect(calls.single, contains('/tmp/别处/ishkafel.app'));
+    expect(
+      calls.single.join(' '),
+      contains(Platform.isWindows ? r'C:\别处\Ishkafel' : '/tmp/别处/ishkafel.app'),
+    );
   });
 
   test('任务不存在时不去拉 app——弹出一个空窗口只会让人困惑', () async {

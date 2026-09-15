@@ -21,8 +21,11 @@ void main() {
 
   test('左栏和属性栏都接了成片时间轴', () {
     for (final path in displays) {
-      expect(File(path).readAsStringSync(), contains('ComposedTimeline'),
-          reason: '$path 显示时间却没接成片轴，给的就是原片位置');
+      expect(
+        File(path).readAsStringSync(),
+        contains('ComposedTimeline'),
+        reason: '$path 显示时间却没接成片轴，给的就是原片位置',
+      );
     }
   });
 
@@ -31,33 +34,43 @@ void main() {
     // 标清楚出处。两者混在同一个字段里正是这条 bug 的形态。
     for (final path in displays) {
       final src = File(path).readAsStringSync();
-      final raw = RegExp(r'formatTimecode\((?:unit|shot)\.(?:start|end)Ms')
-          .allMatches(src)
-          .length;
+      final raw = RegExp(
+        r'formatTimecode\((?:unit|shot)\.(?:start|end)Ms',
+      ).allMatches(src).length;
       final labelled = '取自原片'.allMatches(src).length;
 
-      expect(raw, lessThanOrEqualTo(labelled * 2),
-          reason: '$path 里有 $raw 处直接格式化原片时间，'
-              '而只有 $labelled 行标着「取自原片」——'
-              '多出来的那些是摆在主位置上的原片时间');
+      expect(
+        raw,
+        lessThanOrEqualTo(labelled * 2),
+        reason:
+            '$path 里有 $raw 处直接格式化原片时间，'
+            '而只有 $labelled 行标着「取自原片」——'
+            '多出来的那些是摆在主位置上的原片时间',
+      );
     }
   });
 
   test('时间码格式化只有一处实现', () {
     final offenders = <String>[];
-    for (final f in Directory('lib')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((f) => f.path.endsWith('.dart'))) {
-      if (f.path == 'lib/core/time/timecode.dart') continue;
-      if (f.path.contains('inspector_panel.dart')) continue; // 只是转出去
+    for (final f
+        in Directory('lib')
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where((f) => f.path.endsWith('.dart'))) {
+      final path = f.path.replaceAll(r'\', '/');
+      if (path == 'lib/core/time/timecode.dart') continue;
+      if (path.contains('inspector_panel.dart')) continue; // 只是转出去
       if (f.readAsStringSync().contains('String formatTimecode(')) {
         offenders.add(f.path);
       }
     }
 
-    expect(offenders, isEmpty,
-        reason: '又自己写了一份时间码格式化：\n${offenders.join('\n')}\n'
-            '两份实现迟早不一样，而差的是帧位，肉眼看不出来');
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          '又自己写了一份时间码格式化：\n${offenders.join('\n')}\n'
+          '两份实现迟早不一样，而差的是帧位，肉眼看不出来',
+    );
   });
 }

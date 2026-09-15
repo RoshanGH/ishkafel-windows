@@ -50,8 +50,7 @@ class RenderedCache {
     dir.createSync(recursive: true);
     // 扩展名必须留在最后：ffmpeg 靠它推断输出格式，写成 `xxx.wav.part`
     // 会直接报「Unable to choose an output format」（真机上就这么炸的）
-    final temp = tempPathFor(
-        key: key, prefix: prefix, extension: extension);
+    final temp = tempPathFor(key: key, prefix: prefix, extension: extension);
     try {
       final result = await run('ffmpeg', args(temp));
       if (result.exitCode != 0) {
@@ -88,16 +87,14 @@ class RenderedCache {
     required String key,
     required String prefix,
     required String extension,
-  }) =>
-      p.join(dir.path, '${prefix}_${digest(key)}.$extension');
+  }) => p.join(dir.path, '${prefix}_${digest(key)}.$extension');
 
   /// 渲染中的临时名。`.part` 放在扩展名**之前**——见 [render] 里的说明
   String tempPathFor({
     required String key,
     required String prefix,
     required String extension,
-  }) =>
-      p.join(dir.path, '${prefix}_${digest(key)}.part.$extension');
+  }) => p.join(dir.path, '${prefix}_${digest(key)}.part.$extension');
 
   /// 把这一轮没用到的产物删掉。
   ///
@@ -106,10 +103,12 @@ class RenderedCache {
   /// [protect] 里的文件一律不动（比如记着「这份预览是按什么方案合的」那份存档）。
   void keepOnly({Set<String> protect = const {}}) {
     if (!dir.existsSync()) return;
-    final keep = {..._touched, ...protect};
+    final keep = {
+      for (final path in {..._touched, ...protect}) p.canonicalize(path),
+    };
     for (final entity in dir.listSync(followLinks: false)) {
       if (entity is! File) continue;
-      if (keep.contains(entity.path)) continue;
+      if (keep.contains(p.canonicalize(entity.path))) continue;
       try {
         entity.deleteSync();
       } catch (e) {

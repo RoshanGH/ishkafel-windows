@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/features/tasks/task_artifact_cleaner.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
   late Directory tempDir;
@@ -19,7 +20,7 @@ void main() {
   /// 目录里剩下的文件名（排序后便于逐项比对）
   Future<List<String>> names(Directory dir) async {
     final entities = await dir.list().toList();
-    return entities.map((e) => e.path.split('/').last).toList()..sort();
+    return entities.map((e) => p.basename(e.path)).toList()..sort();
   }
 
   setUp(() async {
@@ -69,7 +70,8 @@ void main() {
   test('人声分离结果、抽帧目录、预览切片这些「目录型」产物也要删干净', () async {
     // 真机上就是这几样删不掉：清理器写的是 `if (entity is! File) continue`，
     // 把目录整个跳过了。一条任务的人声分离结果 32M，六条已删任务就是 200M
-    final stems = Directory('${workDir.path}/stems/ab')..createSync(recursive: true);
+    final stems = Directory('${workDir.path}/stems/ab')
+      ..createSync(recursive: true);
     await touch(stems, '人声.wav');
     final frames = Directory('${workDir.path}/ab_frames')..createSync();
     await touch(frames, 'batch_000.jpg');
@@ -77,7 +79,8 @@ void main() {
     final fit = Directory('${tempDir.path}/speed_fit/ab')
       ..createSync(recursive: true);
     await touch(fit, 'fit_abc.mp4');
-    final voices = Directory('${tempDir.path}/voices/ab')..createSync(recursive: true);
+    final voices = Directory('${tempDir.path}/voices/ab')
+      ..createSync(recursive: true);
     await touch(voices, 'u0.wav');
     final thumbs = Directory('${tempDir.path}/picked_thumbs/ab')
       ..createSync(recursive: true);
@@ -116,10 +119,16 @@ void main() {
     await touch(coversDir, 'abc.jpg');
 
     await cleaner.cleanup('ab');
-    final afterFirst = (work: await names(workDir), covers: await names(coversDir));
+    final afterFirst = (
+      work: await names(workDir),
+      covers: await names(coversDir),
+    );
 
     await cleaner.cleanup('ab');
-    final afterSecond = (work: await names(workDir), covers: await names(coversDir));
+    final afterSecond = (
+      work: await names(workDir),
+      covers: await names(coversDir),
+    );
 
     expect(afterFirst.work, ['abc.pcm']);
     expect(afterFirst.covers, ['abc.jpg']);

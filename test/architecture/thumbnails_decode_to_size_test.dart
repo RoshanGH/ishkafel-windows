@@ -16,11 +16,12 @@ void main() {
       'lib/features/shared/thumb_image.dart',
     };
     final offenders = <String>[];
-    for (final file in Directory('lib')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((f) => f.path.endsWith('.dart'))) {
-      if (allowed.contains(file.path)) continue;
+    for (final file
+        in Directory('lib')
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where((f) => f.path.endsWith('.dart'))) {
+      if (allowed.contains(file.path.replaceAll(r'\', '/'))) continue;
       final src = file.readAsStringSync();
       // 只看真正的构造调用，注释里提到名字不算
       for (final line in src.split('\n')) {
@@ -32,9 +33,13 @@ void main() {
       }
     }
 
-    expect(offenders, isEmpty,
-        reason: '这些地方按图片自己的分辨率解码缩略图：\n'
-            '${offenders.join('\n')}\n'
-            '改成 ThumbImage(path: ...)，它按控件实际像素宽解码');
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          '这些地方按图片自己的分辨率解码缩略图：\n'
+          '${offenders.join('\n')}\n'
+          '改成 ThumbImage(path: ...)，它按控件实际像素宽解码',
+    );
   });
 }

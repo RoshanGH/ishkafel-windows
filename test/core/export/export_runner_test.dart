@@ -5,6 +5,7 @@ import 'package:ishkafel/core/export/export_runner.dart';
 import 'package:ishkafel/core/models/semantic_unit.dart';
 import 'package:ishkafel/core/models/shot.dart';
 import 'package:ishkafel/core/replacement/replacement_plan.dart';
+import 'package:path/path.dart' as p;
 
 /// 假 ffmpeg：记录每一次调用，并按需要造出输出文件
 class _Ffmpeg {
@@ -31,24 +32,24 @@ class _Ffmpeg {
 }
 
 List<SemanticUnit> _units() => const [
-      SemanticUnit(
-        index: 0,
-        startMs: 0,
-        endMs: 2000,
-        transcript: 'U1',
-        shots: [Shot(startMs: 0, endMs: 2000)],
-      ),
-      SemanticUnit(
-        index: 1,
-        startMs: 2000,
-        endMs: 5000,
-        transcript: 'U2',
-        shots: [Shot(startMs: 2000, endMs: 5000)],
-      ),
-    ];
+  SemanticUnit(
+    index: 0,
+    startMs: 0,
+    endMs: 2000,
+    transcript: 'U1',
+    shots: [Shot(startMs: 0, endMs: 2000)],
+  ),
+  SemanticUnit(
+    index: 1,
+    startMs: 2000,
+    endMs: 5000,
+    transcript: 'U2',
+    shots: [Shot(startMs: 2000, endMs: 5000)],
+  ),
+];
 
 ({ExportRunner runner, _Ffmpeg ffmpeg, Directory out, List<int> fetched})
-    _build({String? failOn}) {
+_build({String? failOn}) {
   final ffmpeg = _Ffmpeg(failOn: failOn);
   final work = Directory.systemTemp.createTempSync('ishkafel_exp_work_');
   final out = Directory.systemTemp.createTempSync('ishkafel_exp_out_');
@@ -89,7 +90,7 @@ void main() {
     );
 
     expect(results.map((r) => r.ok), [true, true]);
-    expect(results.map((r) => r.path!.split('/').last), ['变体1.mp4', '变体2.mp4']);
+    expect(results.map((r) => p.basename(r.path!)), ['变体1.mp4', '变体2.mp4']);
     expect(b.fetched, [11, 12]);
   });
 
@@ -102,7 +103,7 @@ void main() {
       // 镜头替换只换画面、变速对齐原坑位，声音一个字节都不变
       replacements: [
         UnitReplacement.perShot(const {
-          0: [11, 12, 13]
+          0: [11, 12, 13],
         }),
         UnitReplacement.keepOriginal(),
       ],
@@ -111,8 +112,11 @@ void main() {
 
     // 每个单元一段原声，共两段；三条组合不该把它们各做三遍
     // （声音由共用的 AudioTrackBuilder 合成，产物叫 mix_u*）
-    expect(b.ffmpeg.countWhere((a) => a.contains('mix_u')), 2,
-        reason: '声音是变量之外的东西，三条组合各做一遍纯属浪费');
+    expect(
+      b.ffmpeg.countWhere((a) => a.contains('mix_u')),
+      2,
+      reason: '声音是变量之外的东西，三条组合各做一遍纯属浪费',
+    );
   });
 
   test('整体替换时声音逐条合——每条变体说的话都不一样', () async {
@@ -128,9 +132,13 @@ void main() {
       outputDir: b.out,
     );
 
-    expect(b.ffmpeg.countWhere((a) => a.contains('mix_u')), 6,
-        reason: '三条变体 × 两个单元。整体替换换的是整段（含口播），'
-            '共用一条声音就全错了');
+    expect(
+      b.ffmpeg.countWhere((a) => a.contains('mix_u')),
+      6,
+      reason:
+          '三条变体 × 两个单元。整体替换换的是整段（含口播），'
+          '共用一条声音就全错了',
+    );
   });
 
   test('同一段原片画面只切一遍——它会在多条组合里重复出现', () async {
@@ -166,8 +174,11 @@ void main() {
 
     expect(results.first.ok, isTrue);
     expect(results.last.ok, isFalse);
-    expect(results.last.failure, contains('ffmpeg 报的真正原因'),
-        reason: 'ffmpeg 的 stderr 动辄几百行，真正的原因总在末尾');
+    expect(
+      results.last.failure,
+      contains('ffmpeg 报的真正原因'),
+      reason: 'ffmpeg 的 stderr 动辄几百行，真正的原因总在末尾',
+    );
   });
 
   test('声音挂了就没有哪条能成，如实给每一条同一个原因', () async {
@@ -252,9 +263,11 @@ void main() {
 
       expect(results, hasLength(1));
       expect(work.existsSync(), isTrue);
-      expect(work.listSync().whereType<File>().map((f) => f.path),
-          anyElement(contains('clip_')),
-          reason: '切片留着，下次重导按指纹直接复用');
+      expect(
+        work.listSync().whereType<File>().map((f) => f.path),
+        anyElement(contains('clip_')),
+        reason: '切片留着，下次重导按指纹直接复用',
+      );
       expect(out.listSync(), isNotEmpty, reason: '成片本身当然要留着');
     });
   });

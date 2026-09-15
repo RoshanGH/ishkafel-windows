@@ -7,6 +7,7 @@ import 'package:ishkafel/core/models/renew_task.dart';
 import 'package:ishkafel/core/script/script_doc.dart';
 import 'package:ishkafel/core/script/uploaded_voice.dart';
 import 'package:ishkafel/core/storage/file_task_repository.dart';
+import 'package:path/path.dart' as p;
 
 /// `script voice-file` —— 用我自己录的配音。
 ///
@@ -19,17 +20,19 @@ void main() {
   setUp(() async {
     dir = Directory.systemTemp.createTempSync('vf');
     repo = FileTaskRepository(dir);
-    await repo.save(RenewTask(
-      id: 't1',
-      name: '片子',
-      status: RenewTaskStatus.ready,
-      createdAt: DateTime(2026, 9, 1),
-      updatedAt: DateTime(2026, 9, 1),
-      script: ScriptDoc([
-        ScriptLine.create(text: '早就跟你们说了'),
-        ScriptLine.create(text: '第二句'),
-      ]).withDefaultVoiceId('vivi'),
-    ));
+    await repo.save(
+      RenewTask(
+        id: 't1',
+        name: '片子',
+        status: RenewTaskStatus.ready,
+        createdAt: DateTime(2026, 9, 1),
+        updatedAt: DateTime(2026, 9, 1),
+        script: ScriptDoc([
+          ScriptLine.create(text: '早就跟你们说了'),
+          ScriptLine.create(text: '第二句'),
+        ]).withDefaultVoiceId('vivi'),
+      ),
+    );
   });
   tearDown(() => dir.deleteSync(recursive: true));
 
@@ -72,8 +75,11 @@ void main() {
     await run(rest: ['t1', audio().path], line: 1);
     final saved = (await repo.findById('t1'))!.script!;
     final kept = saved.lines.first.voiceover!.audioPath;
-    expect(kept, contains('voices/t1'),
-        reason: '它现在是这一行的时间根，留在别人家里等于地基不稳');
+    expect(
+      kept,
+      contains(p.join('voices', 't1')),
+      reason: '它现在是这一行的时间根，留在别人家里等于地基不稳',
+    );
     expect(File(kept).existsSync(), isTrue);
   });
 
@@ -81,14 +87,11 @@ void main() {
     final (code, jsonOut, log) = await run(
       rest: ['t1', audio().path],
       line: 1,
-      words: const [
-        VoiceWord(text: '早就跟你们讲过了', startMs: 0, endMs: 900),
-      ],
+      words: const [VoiceWord(text: '早就跟你们讲过了', startMs: 0, endMs: 900)],
     );
     expect(code, 0);
     expect((await repo.findById('t1'))!.script!.lines.first.text, '早就跟你们讲过了');
-    expect(log, contains('台词按你录的改了'),
-        reason: '悄悄把台词换掉，人回头看脚本会以为自己记错了');
+    expect(log, contains('台词按你录的改了'), reason: '悄悄把台词换掉，人回头看脚本会以为自己记错了');
   });
 
   test('听不出内容也不该挡住这件事——时长照用，但要说清代价', () async {
@@ -114,7 +117,10 @@ void main() {
   });
 
   test('文件不在就直说，别留个空壳', () async {
-    final (code, jsonOut, log) = await run(rest: ['t1', '${dir.path}/没有.wav'], line: 1);
+    final (code, jsonOut, log) = await run(
+      rest: ['t1', '${dir.path}/没有.wav'],
+      line: 1,
+    );
     expect(code, isNot(0));
     expect(log, contains('找不到这个音频文件'));
   });

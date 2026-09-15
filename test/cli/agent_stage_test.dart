@@ -25,13 +25,13 @@ void main() {
   }
 
   AgentStage stage(AgentStageMode mode) => AgentStage(
-        appExists: (_) => true,
-        mode: mode,
-        dataDir: dir,
-        taskId: 't1',
-        stepTimeout: const Duration(milliseconds: 120),
-        run: fakeOpen,
-      );
+    appExists: (_) => true,
+    mode: mode,
+    dataDir: dir,
+    taskId: 't1',
+    stepTimeout: const Duration(milliseconds: 120),
+    run: fakeOpen,
+  );
 
   test('静默模式：不弹窗、不写在场状态——那条路径要保持原来的速度', () async {
     await stage(AgentStageMode.silent).begin('挑镜头');
@@ -41,19 +41,30 @@ void main() {
 
   test('可视模式：把软件拉起来，并让它落到这个任务上', () async {
     await stage(AgentStageMode.visual).begin('挑镜头');
-    expect(launched.single.join(' '), contains('open -a'));
+    expect(
+      launched.single.join(' '),
+      contains(Platform.isWindows ? r'Ishkafel\ishkafel.exe' : 'open -a'),
+    );
     // 「去哪个任务」走唤醒文件而不是启动参数——app 已经在跑时启动参数
     // 会被静默丢弃（open 命令那边真机撞到过）
-    expect(File('${dir.path}/ui_wake.json').existsSync(), isTrue,
-        reason: '冷启动、热启动要走同一条路');
+    expect(
+      File('${dir.path}/ui_wake.json').existsSync(),
+      isTrue,
+      reason: '冷启动、热启动要走同一条路',
+    );
   });
 
   test('可视模式：每一步都说清在做什么、界面该看哪儿', () async {
     final s = stage(AgentStageMode.visual);
     await s.begin('开工');
-    await s.show('正在给第 10 句挑镜头',
-        focus: const AgentFocus(
-            module: 'director', lineIndex: 9, panel: AgentPanel.findShots));
+    await s.show(
+      '正在给第 10 句挑镜头',
+      focus: const AgentFocus(
+        module: 'director',
+        lineIndex: 9,
+        panel: AgentPanel.findShots,
+      ),
+    );
     final p = readAgentPresence(dataDir: dir, taskId: 't1')!;
     expect(p.action, '正在给第 10 句挑镜头');
     expect(p.focus!.module, 'director');
@@ -74,8 +85,11 @@ void main() {
     await s.begin('开工');
     await s.show('第二步');
     watch.stop();
-    expect(watch.elapsedMilliseconds, lessThan(200),
-        reason: '界面跟得上就别拖着——节奏由界面决定，不是猜时间');
+    expect(
+      watch.elapsedMilliseconds,
+      lessThan(200),
+      reason: '界面跟得上就别拖着——节奏由界面决定，不是猜时间',
+    );
   });
 
   test('界面没开：等一下就照常往下跑，不把正事卡死', () async {
@@ -84,33 +98,41 @@ void main() {
     await s.begin('开工'); // 没人回执
     watch.stop();
     expect(watch.elapsedMilliseconds, greaterThanOrEqualTo(100));
-    expect(readAgentPresence(dataDir: dir, taskId: 't1'), isNotNull,
-        reason: '状态还是要写——万一界面晚一点开起来，它能看到');
+    expect(
+      readAgentPresence(dataDir: dir, taskId: 't1'),
+      isNotNull,
+      reason: '状态还是要写——万一界面晚一点开起来，它能看到',
+    );
   });
 
-  test('换模块就把人带过去——他可能停在任务列表，也可能停在别的模块',
-      () async {
+  test('换模块就把人带过去——他可能停在任务列表，也可能停在别的模块', () async {
     final s = stage(AgentStageMode.visual);
-    await s.begin('开工',
-        focus: const AgentFocus(module: 'director', lineIndex: 0));
+    await s.begin(
+      '开工',
+      focus: const AgentFocus(module: 'director', lineIndex: 0),
+    );
     File('${dir.path}/ui_wake.json').deleteSync(); // 界面消费掉了
 
-    await s.show('去工作台看候选',
-        focus: const AgentFocus(module: 'workbench', unitIndex: 3));
-    final wake =
-        File('${dir.path}/ui_wake.json').readAsStringSync();
-    expect(wake, contains('workbench'),
-        reason: '跨模块跳转走唤醒文件，模块内部定位走在场状态');
+    await s.show(
+      '去工作台看候选',
+      focus: const AgentFocus(module: 'workbench', unitIndex: 3),
+    );
+    final wake = File('${dir.path}/ui_wake.json').readAsStringSync();
+    expect(wake, contains('workbench'), reason: '跨模块跳转走唤醒文件，模块内部定位走在场状态');
   });
 
   test('同一个模块里连着做几步：不重复唤醒（别把界面弹来弹去）', () async {
     final s = stage(AgentStageMode.visual);
-    await s.begin('开工',
-        focus: const AgentFocus(module: 'director', lineIndex: 0));
+    await s.begin(
+      '开工',
+      focus: const AgentFocus(module: 'director', lineIndex: 0),
+    );
     File('${dir.path}/ui_wake.json').deleteSync();
 
-    await s.show('还在编导台',
-        focus: const AgentFocus(module: 'director', lineIndex: 5));
+    await s.show(
+      '还在编导台',
+      focus: const AgentFocus(module: 'director', lineIndex: 5),
+    );
     expect(File('${dir.path}/ui_wake.json').existsSync(), isFalse);
   });
 
@@ -123,8 +145,10 @@ void main() {
   });
 
   test('模式可以由环境变量给——Agent 把它贯穿整个会话', () {
-    expect(AgentStageMode.from(env: {'ISHKAFEL_VISUAL': '1'}),
-        AgentStageMode.visual);
+    expect(
+      AgentStageMode.from(env: {'ISHKAFEL_VISUAL': '1'}),
+      AgentStageMode.visual,
+    );
     expect(AgentStageMode.from(env: const {}), AgentStageMode.silent);
   });
 }
@@ -154,15 +178,19 @@ void _globalSlotTests() {
     );
     await stage.begin('正在导入 a.mp4');
     // 软件照样弹出来
-    expect(calls.single.first, 'open');
+    expect(
+      calls.single.first,
+      Platform.isWindows ? endsWith(r'Ishkafel\ishkafel.exe') : 'open',
+    );
     expect(consumeUiWake(dir), isNull);
     // 状态照样报出去，任务列表页盯的就是它
-    final presence =
-        readAgentPresence(dataDir: dir, taskId: globalPresenceSlot);
+    final presence = readAgentPresence(
+      dataDir: dir,
+      taskId: globalPresenceSlot,
+    );
     expect(presence!.action, '正在导入 a.mp4');
     stage.end();
-    expect(readAgentPresence(dataDir: dir, taskId: globalPresenceSlot),
-        isNull);
+    expect(readAgentPresence(dataDir: dir, taskId: globalPresenceSlot), isNull);
   });
 
   /// 每一步都握手（界面展示完才回执）是为了让人跟得上，但界面**没开着**的时候
@@ -188,11 +216,14 @@ void _globalSlotTests() {
       // **数「等了几次」，不拿墙钟量**：并发跑测试时机器一忙，
       // 两次超时加调度开销就能顶穿任何一个墙钟阈值——这条用例为此
       // 假红过三次（2026-09-09）。要验的性质本来就是次数，不是耗时。
-      expect(stage.waitedCount, 2,
-          reason: '前两步各等一个超时，后面四步该直接过——'
-              '六步全等的话人和 Agent 都在白耗');
+      expect(
+        stage.waitedCount,
+        2,
+        reason:
+            '前两步各等一个超时，后面四步该直接过——'
+            '六步全等的话人和 Agent 都在白耗',
+      );
       dir.deleteSync(recursive: true);
     });
   });
-
 }

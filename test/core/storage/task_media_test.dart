@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/core/storage/task_media.dart';
+import 'package:path/path.dart' as p;
 
 /// 一个任务用到的**物料**存在哪儿。
 ///
@@ -19,8 +20,8 @@ void main() {
 
   test('素材与配乐各自落在这个任务名下', () {
     final m = TaskMedia(dataDir: dir, taskId: 't1');
-    expect(m.materialsDir.path, endsWith('materials/t1'));
-    expect(m.bgmDir.path, endsWith('bgm/t1'));
+    expect(m.materialsDir.path, endsWith(p.join('materials', 't1')));
+    expect(m.bgmDir.path, endsWith(p.join('bgm', 't1')));
   });
 
   test('两个任务用同一条素材：各存一份，互不影响', () {
@@ -46,8 +47,8 @@ void main() {
 
   test('派生产物也在这个任务名下——删任务一起走', () {
     final m = TaskMedia(dataDir: dir, taskId: 't1');
-    expect(m.proxyDir.path, endsWith('proxy/t1'));
-    expect(m.vocalsDir.path, endsWith('vocals/t1'));
+    expect(m.proxyDir.path, endsWith(p.join('proxy', 't1')));
+    expect(m.vocalsDir.path, endsWith(p.join('vocals', 't1')));
   });
 
   test('删任务就把这个任务的物料一起收走', () {
@@ -68,14 +69,18 @@ void main() {
   });
 
   test('删别的任务不碰我的', () {
-    final a = TaskMedia(dataDir: dir, taskId: 'a')..materialsDir.createSync(recursive: true);
-    final b = TaskMedia(dataDir: dir, taskId: 'b')..materialsDir.createSync(recursive: true);
+    final a = TaskMedia(dataDir: dir, taskId: 'a')
+      ..materialsDir.createSync(recursive: true);
+    final b = TaskMedia(dataDir: dir, taskId: 'b')
+      ..materialsDir.createSync(recursive: true);
     b.deleteAll();
     expect(a.materialsDir.existsSync(), isTrue);
   });
 
   test('目录本来就不存在时删除不炸', () {
-    expect(() => TaskMedia(dataDir: dir, taskId: '没有').deleteAll(),
-        returnsNormally);
+    expect(
+      () => TaskMedia(dataDir: dir, taskId: '没有').deleteAll(),
+      returnsNormally,
+    );
   });
 }

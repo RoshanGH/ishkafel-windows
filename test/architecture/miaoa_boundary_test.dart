@@ -25,13 +25,17 @@ void main() {
     };
     final offenders = [
       for (final f in dartFilesUnder('lib'))
-        if (!allowed.contains(f.path) &&
+        if (!allowed.contains(f.path.replaceAll(r'\', '/')) &&
             f.readAsStringSync().contains('resolveMiaoaBinary'))
           f.path,
     ];
-    expect(offenders, isEmpty,
-        reason: '这些文件绕过了 MiaoaGateway 自己解析 miaoa 路径。'
-            '把调用改走网关，否则 GUI 空 PATH 的坑会再踩一遍');
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          '这些文件绕过了 MiaoaGateway 自己解析 miaoa 路径。'
+          '把调用改走网关，否则 GUI 空 PATH 的坑会再踩一遍',
+    );
   });
 
   test('miaoa 各服务不许自己起子进程——失败分类不许有第二份', () {
@@ -43,12 +47,16 @@ void main() {
     };
     final offenders = [
       for (final f in dartFilesUnder('lib/core/miaoa'))
-        if (!allowed.contains(f.path) &&
+        if (!allowed.contains(f.path.replaceAll(r'\', '/')) &&
             f.readAsStringSync().contains('systemProcessRunner'))
           f.path,
     ];
-    expect(offenders, isEmpty,
-        reason: '这些 miaoa 服务绕过了 MiaoaGateway 直接拿子进程执行器。'
-            '改成注入 MiaoaGateway，让路径解析与错误分类只存在一份');
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          '这些 miaoa 服务绕过了 MiaoaGateway 直接拿子进程执行器。'
+          '改成注入 MiaoaGateway，让路径解析与错误分类只存在一份',
+    );
   });
 }

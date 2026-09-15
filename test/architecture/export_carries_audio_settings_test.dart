@@ -15,12 +15,17 @@ void main() {
   /// 调用 exportAll / exportCombinations 的地方，以及那一次调用的参数文本
   List<(String file, String call)> exportCalls() {
     final out = <(String, String)>[];
-    for (final f in Directory('lib')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((f) => f.path.endsWith('.dart'))) {
+    for (final f
+        in Directory('lib')
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where((f) => f.path.endsWith('.dart'))) {
       // 定义本身不算
-      if (f.path.endsWith('core/export/export_runner.dart')) continue;
+      if (f.path
+          .replaceAll(r'\', '/')
+          .endsWith('core/export/export_runner.dart')) {
+        continue;
+      }
       final src = f.readAsStringSync();
       for (final name in const ['exportAll(', 'exportCombinations(']) {
         var from = 0;
@@ -67,8 +72,12 @@ void main() {
         if (!call.contains(key)) offenders.add('$file 少了 $key');
       }
     }
-    expect(offenders, isEmpty,
-        reason: '这些导出调用点漏了参数，导出来的片子和界面/预览里不是一回事：\n'
-            '${offenders.join('\n')}');
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          '这些导出调用点漏了参数，导出来的片子和界面/预览里不是一回事：\n'
+          '${offenders.join('\n')}',
+    );
   });
 }
