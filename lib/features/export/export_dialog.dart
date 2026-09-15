@@ -15,6 +15,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/models/export_record.dart';
+import '../../core/platform/platform_shell.dart';
 
 
 import '../../app/theme/app_colors.dart';
@@ -148,10 +149,7 @@ String shortenPath(String path) {
 /// 在访达里显示。**用 `open` 而不是自己拼 AppleScript**：前者是 macOS 的
 /// 标准入口，路径里有空格、中文、`&` 都不会出事
 Future<void> revealInFinder(String path) async {
-  final result = await Process.run('open', [path]);
-  if (result.exitCode != 0) {
-    throw StateError('${result.stderr}'.trim());
-  }
+  await PlatformShell().openPath(path);
 }
 
 class _ExportDialog extends ConsumerStatefulWidget {

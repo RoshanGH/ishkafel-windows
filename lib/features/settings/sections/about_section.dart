@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../app/theme/app_spacing.dart';
 import '../../../core/log/app_log.dart';
+import '../../../core/platform/platform_shell.dart';
 import '../settings_providers.dart';
 import '../product_owner_card.dart';
 import '../update_card.dart';
@@ -15,7 +16,7 @@ import '../settings_widgets.dart';
 typedef DirectoryRevealer = Future<void> Function(Directory dir);
 
 Future<void> _revealInFinder(Directory dir) async {
-  await Process.run('open', [dir.path]);
+  await PlatformShell().openPath(dir.path);
 }
 
 final directoryRevealerProvider =

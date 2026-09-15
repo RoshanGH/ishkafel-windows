@@ -8,10 +8,10 @@
 
 ## Task 1：平台 Shell 打开与定位契约
 
-- [ ] 先写失败测试：Windows 打开目录、选中文件分别生成 `explorer.exe <path>` 与 `explorer.exe /select,<path>`；macOS 保持 `open <path>` 与 `open -R <path>`。
-- [ ] 给 `PlatformShell` 增加可注入的异步 runner、非零退出码错误和 `openPath`/`revealPath`。
-- [ ] 添加架构守卫，禁止 `lib/features` 再出现 `Process.run('open', ...)`。
-- [ ] 目标测试转绿并提交。
+- [x] 先写失败测试：Windows 打开目录、选中文件分别生成 `explorer.exe <path>` 与 `explorer.exe /select,<path>`；macOS 保持 `open <path>` 与 `open -R <path>`。
+- [x] 给 `PlatformShell` 增加可注入的异步 runner、非零退出码错误和 `openPath`/`revealPath`。
+- [x] 添加架构守卫，禁止已迁移页面再出现 `Process.run('open', ...)`。
+- [x] 目标测试转绿并提交。
 
 ## Task 2：导出与设置页改用平台服务
 

@@ -82,6 +82,20 @@ void main() {
     expect(workflow, contains('./scripts/windows/test_media_pipeline.ps1'));
   });
 
+  test('业务页面不直接调用 macOS open', () {
+    for (final path in const [
+      'lib/features/export/export_dialog.dart',
+      'lib/features/settings/sections/about_section.dart',
+    ]) {
+      final source = File(path).readAsStringSync();
+      expect(
+        source,
+        isNot(contains("Process.run('open'")),
+        reason: '$path 必须通过 PlatformShell 处理 Windows/macOS 差异',
+      );
+    }
+  });
+
   test('Mac 同步只能开 PR，不能自动合并', () {
     final local = File('scripts/windows/sync_upstream.ps1').readAsStringSync();
     final workflow = File(
