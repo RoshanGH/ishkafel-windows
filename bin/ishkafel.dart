@@ -30,6 +30,7 @@ import 'package:ishkafel/cli/commands/tasks_command.dart';
 import 'package:ishkafel/cli/commands/todo_command.dart';
 import 'package:ishkafel/cli/commands/unit_command.dart';
 import 'package:ishkafel/cli/data_dir.dart';
+import 'package:ishkafel/cli/console_encoding.dart';
 
 /// ishkafel 的命令行入口。
 ///
@@ -43,83 +44,105 @@ import 'package:ishkafel/cli/data_dir.dart';
 /// - 任务是文件存储，CLI 与 GUI 天然读同一份数据，不需要进程间通信
 /// - 人能直接跑同一条命令复现问题；MCP 要专门的客户端才能调试
 Future<void> main(List<String> args) async {
+  configureConsoleEncoding();
   final parser = ArgParser()
     ..addFlag('json', help: '输出结构化 JSON', defaultsTo: true)
     ..addOption('data-dir', help: '数据目录（默认与 app 一致）')
     ..addOption('unit', help: '单元下标（从 0 开始）')
     ..addOption('shot', help: '镜头下标（从 0 开始）')
-    ..addOption('text',
-        help: 'unit subtitle 用：这一镜的字幕，多段用 | 分开；'
-            '给空串表示不要字幕')
-    ..addFlag('auto',
-        negatable: false, help: 'unit subtitle 用：清掉手改，回到自动算')
-    ..addOption('audio',
-        help: 'unit audio 用：none 不播 / vocals 人声 / background 背景声 / '
-            'original 原声 / follow 跟随全片')
+    ..addOption(
+      'text',
+      help:
+          'unit subtitle 用：这一镜的字幕，多段用 | 分开；'
+          '给空串表示不要字幕',
+    )
+    ..addFlag('auto', negatable: false, help: 'unit subtitle 用：清掉手改，回到自动算')
+    ..addOption(
+      'audio',
+      help:
+          'unit audio 用：none 不播 / vocals 人声 / background 背景声 / '
+          'original 原声 / follow 跟随全片',
+    )
     ..addOption('line', help: 'script 用：行号（从 1 开始，与界面上一致）')
     ..addOption('voice', help: 'script voice 用：音色 id')
-    ..addFlag('visual',
-        negatable: false,
-        help: '可视模式：把 app 拉起来，一步一步演给人看'
-            '（也可以用 ISHKAFEL_VISUAL=1）')
+    ..addFlag(
+      'visual',
+      negatable: false,
+      help:
+          '可视模式：把 app 拉起来，一步一步演给人看'
+          '（也可以用 ISHKAFEL_VISUAL=1）',
+    )
     ..addOption('file', help: 'apply 用：结果文件（不给就从 stdin 读）')
-    ..addFlag('yes',
-        negatable: false, help: 'task-delete 用：确认删除（不可逆）')
-    ..addOption('by',
-        help: 'script shots 用：检索方式 tags/content/image/voiceover/name')
-    ..addOption('materials',
-        help: 'script peek 用：要看哪几条素材的画面，逗号分隔')
-    ..addOption('mode',
-        help: 'ui new-task 用：replace（替换裂变，要 --file）/ '
-            'blank（替换裂变但不用原片）/ script（脚本成片）')
-    ..addOption('items',
-        help: 'review drop/keep 用：要动的候选，单元:镜头:素材（逗号分隔），'
-            '整体替换的候选镜头位写 `-`')
+    ..addFlag('yes', negatable: false, help: 'task-delete 用：确认删除（不可逆）')
+    ..addOption(
+      'by',
+      help: 'script shots 用：检索方式 tags/content/image/voiceover/name',
+    )
+    ..addOption('materials', help: 'script peek 用：要看哪几条素材的画面，逗号分隔')
+    ..addOption(
+      'mode',
+      help:
+          'ui new-task 用：replace（替换裂变，要 --file）/ '
+          'blank（替换裂变但不用原片）/ script（脚本成片）',
+    )
+    ..addOption(
+      'items',
+      help:
+          'review drop/keep 用：要动的候选，单元:镜头:素材（逗号分隔），'
+          '整体替换的候选镜头位写 `-`',
+    )
     ..addOption('out', help: 'export 用：输出目录')
     ..addOption('tag-groups', help: 'import 用：标签组 id，逗号分隔')
-    ..addOption('module',
-        help: 'ui open 用：去哪个模块（director / workbench / review）')
-    ..addFlag('install',
-        negatable: false, help: 'skill 用：把说明书装成技能（确定性落盘）')
+    ..addOption(
+      'module',
+      help: 'ui open 用：去哪个模块（director / workbench / review）',
+    )
+    ..addFlag('install', negatable: false, help: 'skill 用：把说明书装成技能（确定性落盘）')
     ..addOption('keyword', help: 'candidates 用：按画面描述语义检索（替代标签）')
     ..addOption('units', help: 'voice 用：给哪几个单元换音色（0,2）')
     ..addOption('from', help: 'bgm 用：从第几个单元开始铺')
-    ..addOption('to',
-        help: 'bgm 用：铺到第几个单元；unit move 用：挪到第几个位置（都从 0 开始）')
-    ..addOption('volume',
-        help: 'bgm 用：配乐音量；unit audio 用：素材原声压到几成（都是 0~1）')
+    ..addOption('to', help: 'bgm 用：铺到第几个单元；unit move 用：挪到第几个位置（都从 0 开始）')
+    ..addOption('volume', help: 'bgm 用：配乐音量；unit audio 用：素材原声压到几成（都是 0~1）')
     ..addFlag('remove', help: 'bgm 用：删掉从 --from 开始的那一段')
-    ..addOption('preset',
-        help: 'subtitle 用：字幕样式预设。'
-            'whiteBox / blurBox 能盖住素材自带的烧录字幕')
+    ..addOption(
+      'preset',
+      help:
+          'subtitle 用：字幕样式预设。'
+          'whiteBox / blurBox 能盖住素材自带的烧录字幕',
+    )
     ..addOption('bottom', help: 'subtitle 用：字幕距画面底部的比例（如 0.22）')
     ..addOption('font', help: 'subtitle 用：字号占画面高度的比例（如 0.034）')
-    ..addFlag('probe',
-        help: 'candidates 用：探一下每条候选多长、选它会变速多少（慢一些）')
+    ..addFlag('probe', help: 'candidates 用：探一下每条候选多长、选它会变速多少（慢一些）')
     ..addOption('video', help: 'peek 用：要看哪个视频文件')
     ..addOption('at', help: 'peek 用：看第几毫秒（缺省 1000）')
     ..addOption('ats', help: 'peek 用：一次看好几个时间点，逗号分隔')
-    ..addOption('exclude-projects',
-        help: 'candidates 用：排除这些项目的素材（逗号分隔的项目 id）。'
-            '替换裂变常用 --exclude-projects <原片项目> 换掉原来那批画面')
+    ..addOption(
+      'exclude-projects',
+      help:
+          'candidates 用：排除这些项目的素材（逗号分隔的项目 id）。'
+          '替换裂变常用 --exclude-projects <原片项目> 换掉原来那批画面',
+    )
     ..addOption('page', help: 'candidates 用：第几页（从 1 开始）')
-    ..addOption('tag-mode',
-        defaultsTo: 'or', help: 'candidates 用：标签检索 and（全满足）| or（任一）')
-    ..addOption('dir',
-        help: 'skill --install 用：装到指定技能目录（不认默认目录的 Agent 自报）')
+    ..addOption(
+      'tag-mode',
+      defaultsTo: 'or',
+      help: 'candidates 用：标签检索 and（全满足）| or（任一）',
+    )
+    ..addOption('dir', help: 'skill --install 用：装到指定技能目录（不认默认目录的 Agent 自报）')
     ..addOption('name', help: 'blank create / ui new-task 用：任务名')
     ..addOption('resolution', help: 'export 用：短边 480/720/1080/1440/2160')
     ..addOption('fps', help: 'export 用：24/25/30/50/60')
-    ..addOption('bitrate',
-        help: 'export 用：recommended/higher/lower 或 kbps 数字')
+    ..addOption('bitrate', help: 'export 用：recommended/higher/lower 或 kbps 数字')
     ..addOption('codec', help: 'export 用：h264/hevc')
     ..addOption('format', help: 'export 用：mp4/mov')
-    ..addOption('tags',
-        help: 'blank tags 用：标签，逗号分隔。'
-            'script shots 也用它：这次检索带哪些标签'
-            '（不给就用参考镜打出来的；给空串就不带标签约束）')
-    ..addOption('external',
-        help: 'analyze 用：哪几步交给调用方做（segment,tag）')
+    ..addOption(
+      'tags',
+      help:
+          'blank tags 用：标签，逗号分隔。'
+          'script shots 也用它：这次检索带哪些标签'
+          '（不给就用参考镜打出来的；给空串就不带标签约束）',
+    )
+    ..addOption('external', help: 'analyze 用：哪几步交给调用方做（segment,tag）')
     ..addFlag('help', abbr: 'h', negatable: false, help: '显示这份用法');
 
   final ArgResults parsed;
@@ -156,164 +179,186 @@ Future<void> main(List<String> args) async {
 
   final code = switch (command) {
     'import' => await runImportCommand(
-        rest: rest,
-        dataDir: dataDir,
-        tagGroups: parsed['tag-groups'] as String?,
-        visual: parsed['visual'] as bool,
-      ),
+      rest: rest,
+      dataDir: dataDir,
+      tagGroups: parsed['tag-groups'] as String?,
+      visual: parsed['visual'] as bool,
+    ),
     'doctor' => await runDoctorCommand(
-        dataDir: dataDir, out: stdout, err: stderr),
+      dataDir: dataDir,
+      out: stdout,
+      err: stderr,
+    ),
     'subtitle' => await runSubtitleCommand(
-        rest: rest,
-        dataDir: dataDir,
-        visual: parsed['visual'] as bool,
-        preset: parsed['preset'] as String?,
-        bottomRatio: parsed['bottom'] as String?,
-        fontRatio: parsed['font'] as String?,
-      ),
+      rest: rest,
+      dataDir: dataDir,
+      visual: parsed['visual'] as bool,
+      preset: parsed['preset'] as String?,
+      bottomRatio: parsed['bottom'] as String?,
+      fontRatio: parsed['font'] as String?,
+    ),
     'peek' => await runPeekCommand(
-        rest: rest,
-        dataDir: dataDir,
-        videoPath: parsed['video'] as String?,
-        atMs: int.tryParse(parsed['at'] as String? ?? ''),
-        atMsList: parsed['ats'] as String?,
-        materials: parsed['materials'] as String?,
-      ),
+      rest: rest,
+      dataDir: dataDir,
+      videoPath: parsed['video'] as String?,
+      atMs: int.tryParse(parsed['at'] as String? ?? ''),
+      atMsList: parsed['ats'] as String?,
+      materials: parsed['materials'] as String?,
+    ),
     'jianying' => await runJianyingCommand(
-        rest: rest, dataDir: dataDir, visual: parsed['visual'] as bool),
+      rest: rest,
+      dataDir: dataDir,
+      visual: parsed['visual'] as bool,
+    ),
     // voice generate <任务> 与 voice <任务>：前者真合成，后者只定方案
     'clean' => await runCleanCommand(
-        rest: rest, dataDir: dataDir, confirmed: parsed['yes'] as bool),
+      rest: rest,
+      dataDir: dataDir,
+      confirmed: parsed['yes'] as bool,
+    ),
     'bgm' => await runBgmCommand(
-        rest: rest,
-        dataDir: dataDir,
-        visual: parsed['visual'] as bool,
-        fromUnit: parsed['from'] as String?,
-        toUnit: parsed['to'] as String?,
-        materialIds: parsed['materials'] as String?,
-        volume: parsed['volume'] as String?,
-        remove: parsed['remove'] as bool,
-        fetchMaterial: (id) async => (await BgmLibrary().search(pageSize: 200))
-            .items
-            .where((m) => m.id == id)
-            .firstOrNull,
-      ),
-    'voice' => rest.isNotEmpty && rest.first == 'generate'
-        ? await runVoiceGenerateCommand(
-            rest: rest.sublist(1),
-            dataDir: dataDir,
-            visual: parsed['visual'] as bool,
-          )
-        : await runVoiceCommand(
-            rest: rest,
-            dataDir: dataDir,
-            units: parsed['units'] as String?,
-            voiceId: parsed['voice'] as String?,
-          ),
+      rest: rest,
+      dataDir: dataDir,
+      visual: parsed['visual'] as bool,
+      fromUnit: parsed['from'] as String?,
+      toUnit: parsed['to'] as String?,
+      materialIds: parsed['materials'] as String?,
+      volume: parsed['volume'] as String?,
+      remove: parsed['remove'] as bool,
+      fetchMaterial: (id) async => (await BgmLibrary().search(
+        pageSize: 200,
+      )).items.where((m) => m.id == id).firstOrNull,
+    ),
+    'voice' =>
+      rest.isNotEmpty && rest.first == 'generate'
+          ? await runVoiceGenerateCommand(
+              rest: rest.sublist(1),
+              dataDir: dataDir,
+              visual: parsed['visual'] as bool,
+            )
+          : await runVoiceCommand(
+              rest: rest,
+              dataDir: dataDir,
+              units: parsed['units'] as String?,
+              voiceId: parsed['voice'] as String?,
+            ),
     'voices' => runVoicesCommand(),
     'tag-groups' => await runTagGroupsCommand(),
     'analyze' => await runAnalyzeCommand(
-        rest: rest,
-        dataDir: dataDir,
-        visual: parsed['visual'] as bool,
-        external: parsed['external'] as String?,
-      ),
+      rest: rest,
+      dataDir: dataDir,
+      visual: parsed['visual'] as bool,
+      external: parsed['external'] as String?,
+    ),
     'skill' => await runSkillCommand(
-        rest: rest,
-        install: parsed['install'] as bool,
-        dir: parsed['dir'] as String?,
-      ),
+      rest: rest,
+      install: parsed['install'] as bool,
+      dir: parsed['dir'] as String?,
+    ),
     'task-rename' => await runTaskRenameCommand(
-        rest: rest, dataDir: dataDir, name: parsed['name'] as String?),
+      rest: rest,
+      dataDir: dataDir,
+      name: parsed['name'] as String?,
+    ),
     'task-copy' => await runTaskCopyCommand(
-        rest: rest, dataDir: dataDir, name: parsed['name'] as String?),
+      rest: rest,
+      dataDir: dataDir,
+      name: parsed['name'] as String?,
+    ),
     'task-delete' => await runTaskDeleteCommand(
-        rest: rest, dataDir: dataDir, yes: parsed['yes'] as bool),
+      rest: rest,
+      dataDir: dataDir,
+      yes: parsed['yes'] as bool,
+    ),
     'ui' => await runUiCommand(
-        rest: rest,
-        dataDir: dataDir,
-        mode: parsed['mode'] as String?,
-        file: parsed['file'] as String?,
-        tagGroups: parsed['tag-groups'] as String?,
-        name: parsed['name'] as String?,
-        module: parsed['module'] as String?,
-      ),
+      rest: rest,
+      dataDir: dataDir,
+      mode: parsed['mode'] as String?,
+      file: parsed['file'] as String?,
+      tagGroups: parsed['tag-groups'] as String?,
+      name: parsed['name'] as String?,
+      module: parsed['module'] as String?,
+    ),
     'review' => await runReviewCommand(
-        rest: rest,
-        dataDir: dataDir,
-        items: parsed['items'] as String?,
-        file: parsed['file'] as String?,
-        visual: parsed['visual'] as bool,
-      ),
+      rest: rest,
+      dataDir: dataDir,
+      items: parsed['items'] as String?,
+      file: parsed['file'] as String?,
+      visual: parsed['visual'] as bool,
+    ),
     'blank' => await runBlankCommand(
-        rest: rest,
-        dataDir: dataDir,
-        name: parsed['name'] as String?,
-        tagGroups: parsed['tag-groups'] as String?,
-        unit: int.tryParse(parsed['unit'] as String? ?? ''),
-        tags: parsed['tags'] as String?,
-      ),
+      rest: rest,
+      dataDir: dataDir,
+      name: parsed['name'] as String?,
+      tagGroups: parsed['tag-groups'] as String?,
+      unit: int.tryParse(parsed['unit'] as String? ?? ''),
+      tags: parsed['tags'] as String?,
+    ),
     'unit' => await runUnitCommand(
-        rest: rest,
-        dataDir: dataDir,
-        unit: int.tryParse(parsed['unit'] as String? ?? ''),
-        shot: int.tryParse(parsed['shot'] as String? ?? ''),
-        to: int.tryParse(parsed['to'] as String? ?? ''),
-        tags: parsed['tags'] as String?,
-        audio: parsed['audio'] as String?,
-        text: parsed['text'] as String?,
-        auto: parsed['auto'] as bool,
-        volume: double.tryParse(parsed['volume'] as String? ?? ''),
-        visual: parsed['visual'] == true,
-      ),
+      rest: rest,
+      dataDir: dataDir,
+      unit: int.tryParse(parsed['unit'] as String? ?? ''),
+      shot: int.tryParse(parsed['shot'] as String? ?? ''),
+      to: int.tryParse(parsed['to'] as String? ?? ''),
+      tags: parsed['tags'] as String?,
+      audio: parsed['audio'] as String?,
+      text: parsed['text'] as String?,
+      auto: parsed['auto'] as bool,
+      volume: double.tryParse(parsed['volume'] as String? ?? ''),
+      visual: parsed['visual'] == true,
+    ),
     'todo' => await runTodoCommand(rest: rest, dataDir: dataDir),
     'script' => await runScriptCommand(
-        rest: rest,
-        dataDir: dataDir,
-        searchTags: parsed['tags'] as String?,
-        line: int.tryParse(parsed['line'] as String? ?? ''),
-        file: parsed['file'] as String?,
-        voiceId: parsed['voice'] as String?,
-        outputDir: parsed['out'] as String?,
-        visual: parsed['visual'] as bool,
-        keyword: parsed['keyword'] as String?,
-        materials: parsed['materials'] as String?,
-        by: parsed['by'] as String?,
-      ),
+      rest: rest,
+      dataDir: dataDir,
+      searchTags: parsed['tags'] as String?,
+      line: int.tryParse(parsed['line'] as String? ?? ''),
+      file: parsed['file'] as String?,
+      voiceId: parsed['voice'] as String?,
+      outputDir: parsed['out'] as String?,
+      visual: parsed['visual'] as bool,
+      keyword: parsed['keyword'] as String?,
+      materials: parsed['materials'] as String?,
+      by: parsed['by'] as String?,
+    ),
     'task' => await runTaskCommand(rest: rest, dataDir: dataDir),
     'tasks' => await runTasksCommand(dataDir: dataDir),
     // 接手用：每条任务干到哪了、下一步敲什么、现场有没有别人在动
     'status' => await runStatusCommand(
-        rest: rest, dataDir: dataDir, json: parsed['json'] as bool),
+      rest: rest,
+      dataDir: dataDir,
+      json: parsed['json'] as bool,
+    ),
     'open' => await runOpenCommand(rest: rest, dataDir: dataDir),
     'apply' => await runApplyCommand(
-        rest: rest,
-        dataDir: dataDir,
-        file: parsed['file'] as String?,
-        visual: parsed['visual'] as bool),
+      rest: rest,
+      dataDir: dataDir,
+      file: parsed['file'] as String?,
+      visual: parsed['visual'] as bool,
+    ),
     'export' => await runExportCommand(
-        rest: rest,
-        dataDir: dataDir,
-        outputDir: parsed['out'] as String?,
-        resolution: parsed['resolution'] as String?,
-        fps: parsed['fps'] as String?,
-        bitrate: parsed['bitrate'] as String?,
-        codec: parsed['codec'] as String?,
-        format: parsed['format'] as String?,
-        visual: parsed['visual'] as bool,
-      ),
+      rest: rest,
+      dataDir: dataDir,
+      outputDir: parsed['out'] as String?,
+      resolution: parsed['resolution'] as String?,
+      fps: parsed['fps'] as String?,
+      bitrate: parsed['bitrate'] as String?,
+      codec: parsed['codec'] as String?,
+      format: parsed['format'] as String?,
+      visual: parsed['visual'] as bool,
+    ),
     'candidates' => await runCandidatesCommand(
-        rest: rest,
-        dataDir: dataDir,
-        unitIndex: int.tryParse(parsed['unit'] as String? ?? ''),
-        shotIndex: int.tryParse(parsed['shot'] as String? ?? ''),
-        keyword: parsed['keyword'] as String?,
-        excludeProjects: parsed['exclude-projects'] as String?,
-        probeDurations: parsed['probe'] as bool,
-        visual: parsed['visual'] as bool,
-        page: int.tryParse(parsed['page'] as String? ?? '') ?? 1,
-        tagMode: parsed['tag-mode'] as String,
-      ),
+      rest: rest,
+      dataDir: dataDir,
+      unitIndex: int.tryParse(parsed['unit'] as String? ?? ''),
+      shotIndex: int.tryParse(parsed['shot'] as String? ?? ''),
+      keyword: parsed['keyword'] as String?,
+      excludeProjects: parsed['exclude-projects'] as String?,
+      probeDurations: parsed['probe'] as bool,
+      visual: parsed['visual'] as bool,
+      page: int.tryParse(parsed['page'] as String? ?? '') ?? 1,
+      tagMode: parsed['tag-mode'] as String,
+    ),
     _ => failWith('未知命令：$command\n\n${usageText(parser)}', code: exitBadUsage),
   };
   exit(code);
@@ -321,7 +366,8 @@ Future<void> main(List<String> args) async {
 
 /// 用法说明。抽出来是为了让「没给命令」「命令不认识」「-h」三条路
 /// 给出同一份文本——三份各写各的迟早会漂
-String usageText(ArgParser parser) => '''
+String usageText(ArgParser parser) =>
+    '''
 ishkafel —— 竖屏口播短视频工具的命令行入口
 
 用法：ishkafel <命令> [参数]

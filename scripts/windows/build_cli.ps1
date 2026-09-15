@@ -18,6 +18,18 @@ try {
         throw "CLI artifact must exist only at $expected; found: $found"
     }
 
+    $shim = Join-Path $expected '..\ishkafel.cmd'
+    $shimBody = @'
+@echo off
+chcp 65001 >nul
+"%~dp0ishkafel.exe" %*
+'@
+    [System.IO.File]::WriteAllText(
+        [System.IO.Path]::GetFullPath($shim),
+        $shimBody,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
     Write-Output $expected
 }
 finally {
