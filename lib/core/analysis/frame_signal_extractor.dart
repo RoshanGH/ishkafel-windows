@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../ffmpeg/process_runner.dart';
+import '../ffmpeg/filtergraph_escape.dart';
 import 'frame_signal.dart';
 import '../log/app_log.dart';
 
 /// `metadata=print` 的每条记录：`pts_time:0.0333 … lavfi.scene_score=0.101`
-final _sceneRecord =
-    RegExp(r'pts_time:([0-9]+(?:\.[0-9]+)?)[\s\S]*?lavfi\.scene_score=([0-9.]+)');
+final _sceneRecord = RegExp(
+  r'pts_time:([0-9]+(?:\.[0-9]+)?)[\s\S]*?lavfi\.scene_score=([0-9.]+)',
+);
 
 /// 缩略图边长。取小是刻意的：分辨率越低越不受运动细节影响，只留色彩构成，
 /// 而整片的逐帧特征也才几 MB（96 秒 30fps 约 8.8MB）。
@@ -30,8 +32,9 @@ List<FrameSignal> buildFrameSignals({
   final frameCount = thumbBytes.length ~/ frameSize;
 
   List<double> histAt(int i) => histogramOfRgb24(
-      thumbBytes.sublist(i * frameSize, (i + 1) * frameSize),
-      side: side);
+    thumbBytes.sublist(i * frameSize, (i + 1) * frameSize),
+    side: side,
+  );
 
   final signals = <FrameSignal>[];
   var previous = histAt(0);
@@ -41,11 +44,13 @@ List<FrameSignal> buildFrameSignals({
     j++;
     if (i >= frameCount) break;
     final current = histAt(i);
-    signals.add(FrameSignal(
-      ms: (double.parse(m.group(1)!) * 1000).round(),
-      sceneScore: double.parse(m.group(2)!),
-      histDistance: histogramDistance(previous, current),
-    ));
+    signals.add(
+      FrameSignal(
+        ms: (double.parse(m.group(1)!) * 1000).round(),
+        sceneScore: double.parse(m.group(2)!),
+        histDistance: histogramDistance(previous, current),
+      ),
+    );
     previous = current;
   }
   return List.unmodifiable(signals);
@@ -60,24 +65,38 @@ class FrameSignalExtractor {
   final ProcessRunner run;
   final Directory workDir;
 
-  const FrameSignalExtractor({required this.workDir, this.run = systemProcessRunner});
+  const FrameSignalExtractor({
+    required this.workDir,
+    this.run = systemProcessRunner,
+  });
 
   /// 只取 scene 分数用的 filter：`gt(scene,0)` 让**每一帧**都产出记录，
   /// 而不是只留超过阈值的那些——阈值判定放到 Dart 侧做，才能自适应
   static List<String> sceneArgs(String videoPath, String outPath) => [
-        '-i', videoPath,
-        '-vf', "select='gt(scene,0)',metadata=print:file=$outPath",
-        '-f', 'null', '-',
-      ];
+    '-i',
+    videoPath,
+    '-vf',
+    "select='gt(scene,0)',metadata=print:file=${escapeFfmpegFilterPath(outPath)}",
+    '-f',
+    'null',
+    '-',
+  ];
 
   static List<String> thumbArgs(String videoPath, String outPath) => [
-        '-y',
-        '-i', videoPath,
-        '-vf', 'scale=$signalThumbSide:$signalThumbSide:flags=bilinear,format=rgb24',
-        '-f', 'rawvideo', outPath,
-      ];
+    '-y',
+    '-i',
+    videoPath,
+    '-vf',
+    'scale=$signalThumbSide:$signalThumbSide:flags=bilinear,format=rgb24',
+    '-f',
+    'rawvideo',
+    outPath,
+  ];
 
-  Future<List<FrameSignal>> extract(String videoPath, {required String taskId}) async {
+  Future<List<FrameSignal>> extract(
+    String videoPath, {
+    required String taskId,
+  }) async {
     await workDir.create(recursive: true);
     final scenePath = p.join(workDir.path, '${taskId}_scene.txt');
     final thumbPath = p.join(workDir.path, '${taskId}_thumbs.raw');
@@ -85,12 +104,14 @@ class FrameSignalExtractor {
     final sceneResult = await run('ffmpeg', sceneArgs(videoPath, scenePath));
     if (sceneResult.exitCode != 0) {
       throw FfmpegException(
-          'ffmpeg 场景分析失败（exit=${sceneResult.exitCode}）：${sceneResult.stderr}');
+        'ffmpeg 场景分析失败（exit=${sceneResult.exitCode}）：${sceneResult.stderr}',
+      );
     }
     final thumbResult = await run('ffmpeg', thumbArgs(videoPath, thumbPath));
     if (thumbResult.exitCode != 0) {
       throw FfmpegException(
-          'ffmpeg 缩略图提取失败（exit=${thumbResult.exitCode}）：${thumbResult.stderr}');
+        'ffmpeg 缩略图提取失败（exit=${thumbResult.exitCode}）：${thumbResult.stderr}',
+      );
     }
 
     final sceneFile = File(scenePath);
