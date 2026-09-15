@@ -31,13 +31,24 @@ jobs:
         run: flutter analyze
       - name: Test
         run: flutter test
+      - uses: actions/cache@v4
+        with:
+          path: build/cache/ffmpeg
+          key: ffmpeg-windows-${{ hashFiles('third_party/ffmpeg/windows/manifest.json') }}
+      - name: Prepare pinned media tools
+        shell: pwsh
+        run: ./scripts/windows/prepare_media_tools.ps1
       - name: Build CLI
-        run: dart build cli
+        shell: pwsh
+        run: ./scripts/windows/build_cli.ps1
       - name: Build Windows app
         run: flutter build windows --release
       - name: Smoke-test subtitle renderer
         shell: pwsh
         run: ./scripts/windows/test_renderer.ps1 -Mode Release
+      - name: Smoke-test real media pipeline
+        shell: pwsh
+        run: ./scripts/windows/test_media_pipeline.ps1 -Mode Release
       - uses: actions/upload-artifact@v4
         with:
           name: ishkafel-windows-${{ github.sha }}

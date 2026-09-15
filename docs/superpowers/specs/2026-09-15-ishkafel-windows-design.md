@@ -1,7 +1,7 @@
 # ishkafel Windows 独立项目设计
 
 日期：2026-09-15
-状态：书面评审版
+状态：已批准，实施中
 基线：`RoshanGH/ishkafel` `main@96162c5`（0.1.228）
 
 ## 1. 决策摘要
@@ -171,7 +171,9 @@ GPU 路径和经过白名单验证的硬件解码；失败时允许预览退回�
 
 ## 8. 工具、安装和更新
 
-- 安装包内置相同固定版本的 LGPL FFmpeg/ffprobe，不依赖 winget、Chocolatey 或用户 PATH。
+- 安装包内置相同固定版本的 GPLv3 FFmpeg/ffprobe，不依赖 winget、Chocolatey 或用户 PATH。
+  `libx264` 属于 GPL 组件，因此不能同时声称该构建为 LGPL；随包必须附 GPLv3 许可、
+  构建来源、精确版本和 SHA-256，主程序仅通过独立子进程调用它。
 - CLI 与字幕辅助进程随应用安装，并在用户目录创建 `.cmd` shim；不要求管理员权限。
 - 正式分发使用 MSIX。开发阶段使用本机测试证书，公共分发采用 Microsoft Store 签名或
   受信任的代码签名证书，避免把自签名证书当作正式方案。

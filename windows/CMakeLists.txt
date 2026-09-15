@@ -87,6 +87,28 @@ if(EXISTS "${CLI_BUNDLE_DIR}/bin/ishkafel.exe")
     COMPONENT Runtime)
 endif()
 
+# Release artifacts are never allowed to depend on an arbitrary ffmpeg from
+# the developer's PATH. The preparation script verifies the pinned archive
+# before this directory exists; failing here prevents a silently incomplete
+# bundle when someone bypasses the supported Windows build entrypoint.
+set(MEDIA_TOOLS_BUNDLE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../build/vendor/ffmpeg")
+if(NOT EXISTS "${MEDIA_TOOLS_BUNDLE_DIR}/tools/ffmpeg.exe" OR
+   NOT EXISTS "${MEDIA_TOOLS_BUNDLE_DIR}/tools/ffprobe.exe")
+  message(FATAL_ERROR
+    "Pinned Windows media tools are missing. Run scripts/windows/prepare_media_tools.ps1 first.")
+endif()
+install(DIRECTORY "${MEDIA_TOOLS_BUNDLE_DIR}/tools/"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/tools" COMPONENT Runtime)
+install(FILES
+  "${MEDIA_TOOLS_BUNDLE_DIR}/LICENSE.txt"
+  "${MEDIA_TOOLS_BUNDLE_DIR}/NOTICE.md"
+  "${MEDIA_TOOLS_BUNDLE_DIR}/manifest.json"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/licenses/ffmpeg" COMPONENT Runtime)
+if(EXISTS "${MEDIA_TOOLS_BUNDLE_DIR}/DISTRIBUTION-README.txt")
+  install(FILES "${MEDIA_TOOLS_BUNDLE_DIR}/DISTRIBUTION-README.txt"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/licenses/ffmpeg" COMPONENT Runtime)
+endif()
+
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
 

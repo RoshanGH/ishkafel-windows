@@ -76,8 +76,10 @@ void main() {
     expect(workflow, contains("flutter-version: '3.47.4'"));
     expect(workflow, contains('flutter analyze'));
     expect(workflow, contains('flutter test'));
-    expect(workflow, contains('dart build cli'));
+    expect(workflow, contains('./scripts/windows/build_cli.ps1'));
     expect(workflow, contains('flutter build windows --release'));
+    expect(workflow, contains('./scripts/windows/prepare_media_tools.ps1'));
+    expect(workflow, contains('./scripts/windows/test_media_pipeline.ps1'));
   });
 
   test('Mac 同步只能开 PR，不能自动合并', () {

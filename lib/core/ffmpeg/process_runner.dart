@@ -148,11 +148,13 @@ class ResolvingProcessRunner {
 /// 可直接展示给用户的安装引导，上层无需再翻译。
 class MediaToolMissingException implements FfmpegException {
   final String executable;
+  final String? operatingSystem;
 
-  const MediaToolMissingException(this.executable);
+  const MediaToolMissingException(this.executable, {this.operatingSystem});
 
   @override
-  String get message => missingToolMessage(executable);
+  String get message =>
+      missingToolMessage(executable, operatingSystem: operatingSystem);
 
   @override
   String toString() => 'MediaToolMissingException: $message';
@@ -163,10 +165,15 @@ class MediaToolMissingException implements FfmpegException {
 /// 必须按工具给出**这个工具自己**的安装办法：这套子进程封装同时被 ffmpeg/
 /// ffprobe 与 miaoa CLI 复用，一律写「请执行 brew install ffmpeg」的话，
 /// miaoa 缺失时用户照做也解决不了，只会以为软件坏了。
-String missingToolMessage(String executable) {
+String missingToolMessage(String executable, {String? operatingSystem}) {
+  final os = operatingSystem ?? Platform.operatingSystem;
   switch (executable) {
     case 'ffmpeg':
     case 'ffprobe':
+      if (os == 'windows') {
+        return '安装包内置的视频处理组件 $executable 缺失或损坏。'
+            '请重新安装 Ishkafel；不要另外修改 PATH。';
+      }
       return '未找到视频处理组件 $executable。请先在终端执行 brew install ffmpeg '
           '完成安装，然后重新启动本应用。';
     case 'miaoa':

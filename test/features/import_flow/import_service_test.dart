@@ -155,10 +155,14 @@ void main() {
     });
 
     test('视频处理组件缺失时把安装引导原样透传给用户', () async {
+      const guidance = MediaToolMissingException(
+        'ffprobe',
+        operatingSystem: 'windows',
+      );
       final missing = ImportService(
         repository: repo,
         ffprobe: FfprobeService(
-          run: (_, _) async => throw const MediaToolMissingException('ffprobe'),
+          run: (_, _) async => throw guidance,
         ),
         thumbnails: ThumbnailService(
           run: (_, _) async => ProcessResult(1, 0, '', ''),
@@ -171,7 +175,7 @@ void main() {
           isA<ImportException>().having(
             (e) => e.message,
             'message',
-            contains('brew install ffmpeg'),
+            guidance.message,
           ),
         ),
       );
