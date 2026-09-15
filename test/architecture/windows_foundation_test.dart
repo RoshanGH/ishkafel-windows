@@ -17,16 +17,27 @@ void main() {
     ]) {
       expect(script, contains(name), reason: '$name 没有进入构建配置');
     }
-    expect(script, contains(r'--dart-define=$($entry.Key)=$($entry.Value)'),
-        reason: '八个配置没有转换成 flutter 的 dart define 参数');
-    expect(script, isNot(contains(r'Write-Output $value')),
-        reason: '构建日志不许回显 secret');
+    expect(
+      script,
+      contains(r'--dart-define=$($entry.Key)=$($entry.Value)'),
+      reason: '八个配置没有转换成 flutter 的 dart define 参数',
+    );
+    expect(
+      script,
+      isNot(contains(r'Write-Output $value')),
+      reason: '构建日志不许回显 secret',
+    );
   });
 
   test('Windows CLI 有独立构建入口', () {
     final script = File('scripts/windows/build_cli.ps1').readAsStringSync();
+    final appScript = File('scripts/windows/build_app.ps1').readAsStringSync();
+    final cmake = File('windows/CMakeLists.txt').readAsStringSync();
     expect(script, contains('dart build cli'));
     expect(script, contains('ishkafel.exe'));
+    expect(appScript, contains("build_cli.ps1"));
+    expect(cmake, contains('build/cli/windows_x64/bundle'));
+    expect(cmake, contains(r'DESTINATION "${CMAKE_INSTALL_PREFIX}/cli"'));
   });
 
   test('跨平台源码保持 LF，PowerShell 保持 CRLF', () {
@@ -44,19 +55,24 @@ void main() {
       'scripts/windows/sync_upstream.ps1',
     ]) {
       final bytes = File(path).readAsBytesSync();
-      final hasUtf8Bom = bytes.length >= 3 &&
+      final hasUtf8Bom =
+          bytes.length >= 3 &&
           bytes[0] == 0xef &&
           bytes[1] == 0xbb &&
           bytes[2] == 0xbf;
       final isAscii = bytes.every((byte) => byte < 0x80);
-      expect(hasUtf8Bom || isAscii, isTrue,
-          reason: '$path 必须带 UTF-8 BOM，或只含 ASCII');
+      expect(
+        hasUtf8Bom || isAscii,
+        isTrue,
+        reason: '$path 必须带 UTF-8 BOM，或只含 ASCII',
+      );
     }
   });
 
   test('Windows CI 同时守住 analyze、test、CLI 和 app', () {
-    final workflow =
-        File('.github/workflows/windows-ci.yml').readAsStringSync();
+    final workflow = File(
+      '.github/workflows/windows-ci.yml',
+    ).readAsStringSync();
     expect(workflow, contains("flutter-version: '3.47.4'"));
     expect(workflow, contains('flutter analyze'));
     expect(workflow, contains('flutter test'));
@@ -65,17 +81,20 @@ void main() {
   });
 
   test('Mac 同步只能开 PR，不能自动合并', () {
-    final local =
-        File('scripts/windows/sync_upstream.ps1').readAsStringSync();
-    final workflow =
-        File('.github/workflows/sync-upstream.yml').readAsStringSync();
+    final local = File('scripts/windows/sync_upstream.ps1').readAsStringSync();
+    final workflow = File(
+      '.github/workflows/sync-upstream.yml',
+    ).readAsStringSync();
     expect(local, contains('git fetch upstream main'));
     expect(local, contains('git merge --no-edit upstream/main'));
     expect(workflow, contains('schedule:'));
     expect(workflow, contains('workflow_dispatch:'));
     expect(workflow, contains('gh pr create'));
-    expect(workflow, isNot(contains('gh pr merge')),
-        reason: '上游更新必须通过 Windows CI 和人工复核');
+    expect(
+      workflow,
+      isNot(contains('gh pr merge')),
+      reason: '上游更新必须通过 Windows CI 和人工复核',
+    );
   });
 
   test('Windows 仓库身份与差异清单有唯一入口', () {

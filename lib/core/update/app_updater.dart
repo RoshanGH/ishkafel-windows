@@ -29,12 +29,15 @@ class UpdateException implements Exception {
 class AppUpdater {
   final Future<ProcessResult> Function(String, List<String>) run;
   final HttpClient Function() httpClient;
+  final String operatingSystem;
 
   AppUpdater({
     Future<ProcessResult> Function(String, List<String>)? run,
     HttpClient Function()? httpClient,
-  })  : run = run ?? Process.run,
-        httpClient = httpClient ?? HttpClient.new;
+    String? operatingSystem,
+  }) : run = run ?? Process.run,
+       httpClient = httpClient ?? HttpClient.new,
+       operatingSystem = operatingSystem ?? Platform.operatingSystem;
 
   /// 下载到 [into]，边下边报进度（0~1）。返回落地的文件
   Future<File> download(
@@ -48,8 +51,9 @@ class AppUpdater {
       final response = await request.close();
       if (response.statusCode != HttpStatus.ok) {
         throw UpdateException(
-            '下载失败（HTTP ${response.statusCode}）。链接可能已经过期，'
-            '关掉重开再试一次。');
+          '下载失败（HTTP ${response.statusCode}）。链接可能已经过期，'
+          '关掉重开再试一次。',
+        );
       }
       final total = response.contentLength;
       into.parent.createSync(recursive: true);
@@ -76,23 +80,34 @@ class AppUpdater {
     final digest = await sha256.bind(file.openRead()).first;
     final got = digest.toString();
     if (got != expected.toLowerCase()) {
-      throw UpdateException('下载的包校验没通过（可能没下完，或者被改过）。'
-          '删掉重下一次；一直不过就联系发包的人。');
+      throw UpdateException(
+        '下载的包校验没通过（可能没下完，或者被改过）。'
+        '删掉重下一次；一直不过就联系发包的人。',
+      );
     }
   }
 
   /// 解压出 `.app`。用 `ditto` 而不是 `unzip`：后者丢扩展属性 → 签名失效
   Future<Directory> unpack(File zip, Directory into) async {
     into.createSync(recursive: true);
-    final r = await run('ditto', ['-x', '-k', zip.path, into.path]);
+    final r = operatingSystem == 'windows'
+        ? await run('powershell.exe', [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            'Expand-Archive -LiteralPath ${_psQuote(zip.path)} '
+                '-DestinationPath ${_psQuote(into.path)} -Force',
+          ])
+        : await run('ditto', ['-x', '-k', zip.path, into.path]);
     if (r.exitCode != 0) {
       throw UpdateException('解压失败：${r.stderr}');
     }
-    final app = into
-        .listSync()
-        .whereType<Directory>()
-        .where((d) => d.path.endsWith('.app'))
-        .firstOrNull;
+    final candidates = into.listSync().whereType<Directory>();
+    final app = operatingSystem == 'windows'
+        ? candidates
+              .where((d) => File(p.join(d.path, 'ishkafel.exe')).existsSync())
+              .firstOrNull
+        : candidates.where((d) => d.path.endsWith('.app')).firstOrNull;
     if (app == null) {
       throw UpdateException('这个包里没有找到 app，可能不是完整的安装包。');
     }
@@ -104,10 +119,21 @@ class AppUpdater {
   Future<void> verifySignature(Directory app) async {
     // 参数**手跑过**才敢写：codesign 没有 `-q`，给了它会 usage 报错退出 2,
     // 于是任何包都被判成「签名不过」，人永远升不上去（这一条是真机验证抓到的）
-    final r = await run('codesign', ['--verify', '--deep', app.path]);
+    final r = operatingSystem == 'windows'
+        ? await run('powershell.exe', [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            r"if ((Get-AuthenticodeSignature -LiteralPath "
+                '${_psQuote(p.join(app.path, 'ishkafel.exe'))}).Status '
+                "-ne 'Valid') { exit 1 }",
+          ])
+        : await run('codesign', ['--verify', '--deep', app.path]);
     if (r.exitCode != 0) {
-      throw UpdateException('新版本的签名验证没通过，没有替换。'
-          '这可能是下载被中间人改过——请找发包的人确认。');
+      throw UpdateException(
+        '新版本的签名验证没通过，没有替换。'
+        '这可能是下载被中间人改过——请找发包的人确认。',
+      );
     }
   }
 
@@ -115,8 +141,12 @@ class AppUpdater {
   /// **先问清楚再动手**，不要替换到一半才发现没权限
   bool canReplace(Directory currentApp) {
     try {
-      final probe = File(p.join(currentApp.parent.path,
-          '.ishkafel-write-probe-${DateTime.now().microsecondsSinceEpoch}'));
+      final probe = File(
+        p.join(
+          currentApp.parent.path,
+          '.ishkafel-write-probe-${DateTime.now().microsecondsSinceEpoch}',
+        ),
+      );
       probe.writeAsStringSync('x');
       probe.deleteSync();
       return true;
@@ -133,8 +163,43 @@ class AppUpdater {
     required String newApp,
     required String targetApp,
     required int pid,
-  }) =>
-      '''#!/bin/sh
+  }) => operatingSystem == 'windows'
+      ? r'''$ErrorActionPreference = 'Stop'
+$processId = '''
+            '$pid\n'
+            r'''$i = 0
+while ((Get-Process -Id $processId -ErrorAction SilentlyContinue) -and $i -lt 600) {
+  Start-Sleep -Milliseconds 100
+  $i++
+}
+$target = '''
+            '${_psQuote(targetApp)}\n'
+            r'''$fresh = '''
+            '${_psQuote(newApp)}\n'
+            r'''$backup = "$target.old"
+try {
+  if (Test-Path -LiteralPath $backup) {
+    Remove-Item -LiteralPath $backup -Recurse -Force
+  }
+  Move-Item -LiteralPath $target -Destination $backup
+  try {
+    Move-Item -LiteralPath $fresh -Destination $target
+  } catch {
+    Move-Item -LiteralPath $backup -Destination $target
+    exit 1
+  }
+  Remove-Item -LiteralPath $backup -Recurse -Force
+  $exe = Join-Path $target 'ishkafel.exe'
+  if (Test-Path -LiteralPath $exe) { Start-Process -FilePath $exe }
+  exit 0
+} catch {
+  if ((Test-Path -LiteralPath $backup) -and -not (Test-Path -LiteralPath $target)) {
+    Move-Item -LiteralPath $backup -Destination $target
+  }
+  exit 1
+}
+'''
+      : '''#!/bin/sh
 # ishkafel 自动更新：等旧进程退出 → 换上新版 → 重新打开
 # 旧的先改名留着，新的就位才删——中途失败还能把旧的搬回来
 i=0
@@ -166,16 +231,31 @@ exit 0
     required Directory currentApp,
     required Directory workDir,
   }) async {
-    final script = File(p.join(workDir.path, 'replace.sh'));
-    script.writeAsStringSync(replaceScript(
-      newApp: newApp.path,
-      targetApp: currentApp.path,
-      pid: pid,
-    ));
-    await run('chmod', ['+x', script.path]);
+    final windows = operatingSystem == 'windows';
+    final script = File(
+      p.join(workDir.path, windows ? 'replace.ps1' : 'replace.sh'),
+    );
+    script.writeAsStringSync(
+      replaceScript(newApp: newApp.path, targetApp: currentApp.path, pid: pid),
+    );
+    if (!windows) await run('chmod', ['+x', script.path]);
     AppLog.info('自动更新：交棒给替换脚本 ${script.path}');
     // detached：这个进程马上就要退出了，脚本必须活下去
-    await Process.start('/bin/sh', [script.path],
-        mode: ProcessStartMode.detachedWithStdio);
+    await Process.start(
+      windows ? 'powershell.exe' : '/bin/sh',
+      windows
+          ? [
+              '-NoProfile',
+              '-NonInteractive',
+              '-ExecutionPolicy',
+              'Bypass',
+              '-File',
+              script.path,
+            ]
+          : [script.path],
+      mode: ProcessStartMode.detachedWithStdio,
+    );
   }
+
+  static String _psQuote(String value) => "'${value.replaceAll("'", "''")}'";
 }

@@ -12,8 +12,8 @@ void main() {
   tearDown(() => dir.deleteSync(recursive: true));
 
   AppUpdater updaterWith(
-          Future<ProcessResult> Function(String, List<String>) run) =>
-      AppUpdater(run: run);
+    Future<ProcessResult> Function(String, List<String>) run,
+  ) => AppUpdater(run: run, operatingSystem: 'macos');
 
   test('指纹对不上就停——装一个坏包比不升级糟得多', () async {
     final f = File('${dir.path}/pkg.zip')..writeAsStringSync('半截包');
@@ -49,15 +49,20 @@ void main() {
       return ProcessResult(0, 0, '', '');
     });
     await expectLater(
-      u.unpack(File('${dir.path}/a.zip')..writeAsStringSync('z'),
-          Directory('${dir.path}/out')),
+      u.unpack(
+        File('${dir.path}/a.zip')..writeAsStringSync('z'),
+        Directory('${dir.path}/out'),
+      ),
       throwsA(isA<UpdateException>()),
     );
   });
 
   test('签名不过就不替换——换完再发现，人手上只剩一个打不开的 app', () async {
-    final u = updaterWith((exe, args) async =>
-        exe == 'codesign' ? ProcessResult(0, 1, '', 'bad') : ProcessResult(0, 0, '', ''));
+    final u = updaterWith(
+      (exe, args) async => exe == 'codesign'
+          ? ProcessResult(0, 1, '', 'bad')
+          : ProcessResult(0, 0, '', ''),
+    );
     await expectLater(
       u.verifySignature(Directory('${dir.path}/x.app')..createSync()),
       throwsA(isA<UpdateException>()),
@@ -65,37 +70,49 @@ void main() {
   });
 
   group('替换脚本', () {
-    final script = AppUpdater().replaceScript(
+    final script = AppUpdater(operatingSystem: 'macos').replaceScript(
       newApp: '/tmp/new/ishkafel.app',
       targetApp: '/Applications/ishkafel.app',
       pid: 4321,
     );
 
     test('先等旧进程退出，不能边跑边换', () {
-      expect(script, contains('kill -0 4321'),
-          reason: '正在运行的可执行文件被删掉，之后每次加载动态库都会崩');
+      expect(
+        script,
+        contains('kill -0 4321'),
+        reason: '正在运行的可执行文件被删掉，之后每次加载动态库都会崩',
+      );
     });
 
     test('旧的先改名留着，新的就位才删', () {
       expect(script, contains('.old'));
-      expect(script.indexOf('mv "/Applications/ishkafel.app"'),
-          lessThan(script.indexOf('mv "/tmp/new/ishkafel.app"')),
-          reason: '顺序反了就没有回滚的余地');
+      expect(
+        script.indexOf('mv "/Applications/ishkafel.app"'),
+        lessThan(script.indexOf('mv "/tmp/new/ishkafel.app"')),
+        reason: '顺序反了就没有回滚的余地',
+      );
     });
 
     test('中途失败要把旧的搬回来，并且照样打开', () {
-      expect(script, contains('mv "\$BACKUP" "/Applications/ishkafel.app"'),
-          reason: '失败了还把人的软件弄没了，这是最不能接受的结局');
-      expect('open "/Applications/ishkafel.app"'.allMatches(script).length,
-          greaterThanOrEqualTo(2),
-          reason: '成功要打开，回滚也要打开——不能让人对着一个没反应的图标');
+      expect(
+        script,
+        contains('mv "\$BACKUP" "/Applications/ishkafel.app"'),
+        reason: '失败了还把人的软件弄没了，这是最不能接受的结局',
+      );
+      expect(
+        'open "/Applications/ishkafel.app"'.allMatches(script).length,
+        greaterThanOrEqualTo(2),
+        reason: '成功要打开，回滚也要打开——不能让人对着一个没反应的图标',
+      );
     });
   });
 
   test('装在没权限的地方：先问清楚，别替换到一半才发现', () {
     final readOnly = Directory('/System/Library/CoreServices/ishkafel.app');
     expect(AppUpdater().canReplace(readOnly), isFalse);
-    expect(AppUpdater().canReplace(Directory('${dir.path}/ishkafel.app')),
-        isTrue);
+    expect(
+      AppUpdater().canReplace(Directory('${dir.path}/ishkafel.app')),
+      isTrue,
+    );
   });
 }

@@ -31,8 +31,11 @@ class CliInstallResult {
   /// 目标目录写不进去，得用管理员权限再来一次
   final bool needsAdmin;
 
-  const CliInstallResult(
-      {required this.ok, required this.message, this.needsAdmin = false});
+  const CliInstallResult({
+    required this.ok,
+    required this.message,
+    this.needsAdmin = false,
+  });
 }
 
 /// 把 app 里带的命令行工具装进 PATH。
@@ -50,10 +53,17 @@ class CliInstaller {
   /// app 里带的那份
   final File bundledCli;
 
+  /// Windows 正式包使用用户目录，不需要提权；安装时把该目录登记到用户 PATH。
+  final bool manageUserPath;
+
   static const _marker = '# ishkafel-cli-shim';
   static const commandName = 'ishkafel';
 
-  const CliInstaller({required this.binDir, required this.bundledCli});
+  const CliInstaller({
+    required this.binDir,
+    required this.bundledCli,
+    this.manageUserPath = false,
+  });
 
   /// 跑在 app 里时的默认装法：CLI 在 `<app>/Contents/Resources/cli/ishkafel`。
   ///
@@ -61,6 +71,20 @@ class CliInstaller {
   /// Dart 不支持交叉编译，两份产物也没法 lipo 成一个（AOT 快照是附加在
   /// Mach-O 后面的，lipo 只认前面那段，合完快照就丢了）
   factory CliInstaller.forRunningApp({Directory? binDir}) {
+    if (Platform.isWindows) {
+      final executableDir = File(Platform.resolvedExecutable).parent;
+      final localAppData = Platform.environment['LOCALAPPDATA'];
+      final defaultBin = localAppData == null || localAppData.isEmpty
+          ? Directory(p.join(executableDir.path, 'user-cli'))
+          : Directory(p.join(localAppData, 'Ishkafel', 'bin'));
+      return CliInstaller(
+        binDir: binDir ?? defaultBin,
+        bundledCli: File(
+          p.join(executableDir.path, 'cli', 'bin', 'ishkafel.exe'),
+        ),
+        manageUserPath: binDir == null,
+      );
+    }
     final macos = File(Platform.resolvedExecutable).parent; // Contents/MacOS
     final contents = macos.parent;
     return CliInstaller(
@@ -69,7 +93,9 @@ class CliInstaller {
     );
   }
 
-  File get _shim => File(p.join(binDir.path, commandName));
+  File get _shim => File(
+    p.join(binDir.path, Platform.isWindows ? '$commandName.cmd' : commandName),
+  );
 
   CliStatus inspect() {
     if (!bundledCli.existsSync()) return CliStatus.unavailable;
@@ -100,7 +126,8 @@ class CliInstaller {
     if (inspect() == CliStatus.foreign) {
       return CliInstallResult(
         ok: false,
-        message: '${_shim.path} 已经有一个同名命令，但不是本应用装的。'
+        message:
+            '${_shim.path} 已经有一个同名命令，但不是本应用装的。'
             '为免覆盖别人的东西，这里不动它——确认可以覆盖就手动删掉再来',
       );
     }
@@ -109,10 +136,17 @@ class CliInstaller {
       if (!binDir.existsSync()) binDir.createSync(recursive: true);
       _shim.writeAsStringSync(_shimBody());
       // 只有可读没有可执行位，敲进去是「permission denied」，用户完全看不懂
-      final chmod = await Process.run('chmod', ['755', _shim.path]);
-      if (chmod.exitCode != 0) {
-        return CliInstallResult(
-            ok: false, message: '装上了但没能给可执行权限：${chmod.stderr}');
+      if (!Platform.isWindows) {
+        final chmod = await Process.run('chmod', ['755', _shim.path]);
+        if (chmod.exitCode != 0) {
+          return CliInstallResult(
+            ok: false,
+            message: '装上了但没能给可执行权限：${chmod.stderr}',
+          );
+        }
+      } else if (manageUserPath) {
+        final pathResult = await _ensureWindowsUserPath();
+        if (pathResult != null) return pathResult;
       }
     } on FileSystemException catch (e) {
       if (_isPermission(e)) {
@@ -126,21 +160,32 @@ class CliInstaller {
     }
 
     return CliInstallResult(
-        ok: true, message: '装好了。终端里执行 $commandName --help 看用法');
+      ok: true,
+      message: '装好了。终端里执行 $commandName --help 看用法',
+    );
   }
 
   /// 用管理员权限再装一次。会弹系统的授权框
   Future<CliInstallResult> installWithAdmin() async {
+    // Windows 默认写入 %LOCALAPPDATA% 并登记 HKCU PATH，不需要管理员权限。
+    if (Platform.isWindows) return install();
     if (!bundledCli.existsSync()) {
       return const CliInstallResult(
-          ok: false, message: '这个版本没有带命令行工具，请用正式打包的版本');
+        ok: false,
+        message: '这个版本没有带命令行工具，请用正式打包的版本',
+      );
     }
     // 脚本内容里有换行和引号，走临时文件再 mv，比拼一条长命令稳
-    final staged = File(p.join(
-        Directory.systemTemp.path, 'ishkafel-shim-${pid.toRadixString(36)}'));
+    final staged = File(
+      p.join(
+        Directory.systemTemp.path,
+        'ishkafel-shim-${pid.toRadixString(36)}',
+      ),
+    );
     staged.writeAsStringSync(_shimBody());
 
-    final script = 'mkdir -p ${_q(binDir.path)} && '
+    final script =
+        'mkdir -p ${_q(binDir.path)} && '
         'cp ${_q(staged.path)} ${_q(_shim.path)} && '
         'chmod 755 ${_q(_shim.path)}';
     // 这条 shell 命令还要再穿一层 AppleScript 的双引号字符串，路径里的
@@ -163,7 +208,9 @@ class CliInstaller {
       return CliInstallResult(ok: false, message: '装不进去：${err.trim()}');
     }
     return CliInstallResult(
-        ok: true, message: '装好了。终端里执行 $commandName --help 看用法');
+      ok: true,
+      message: '装好了。终端里执行 $commandName --help 看用法',
+    );
   }
 
   /// 只删自己装的。返回 false 表示没删（不存在，或者不是我们装的）
@@ -178,14 +225,83 @@ class CliInstaller {
     }
   }
 
-  String _shimBody() => '#!/bin/sh\n'
-      '$_marker\n'
-      '# 由 ishkafel.app 写入。删掉这个文件就等于卸载。\n'
-      'exec ${_q(bundledCli.path)} "\$@"\n';
+  String _shimBody() {
+    if (Platform.isWindows) {
+      return '@echo off\r\n'
+          'rem $_marker\r\n'
+          'chcp 65001 >nul\r\n'
+          '"${bundledCli.path}" %*\r\n';
+    }
+    return '#!/bin/sh\n'
+        '$_marker\n'
+        '# 由 ishkafel.app 写入。删掉这个文件就等于卸载。\n'
+        'exec ${_q(bundledCli.path)} "\$@"\n';
+  }
 
   String? _targetOf(String body) {
+    if (Platform.isWindows) {
+      return RegExp(
+        r'^"([^"]+)" %\*$',
+        multiLine: true,
+      ).firstMatch(body)?.group(1);
+    }
     final match = RegExp(r"^exec '(.+)' ", multiLine: true).firstMatch(body);
     return match?.group(1)?.replaceAll(r"'\''", "'");
+  }
+
+  /// 把默认 shim 目录写入当前用户的 PATH。使用 HKCU 避免管理员权限，也不走
+  /// `setx`（旧版本会截断过长 PATH）。返回 null 表示成功。
+  Future<CliInstallResult?> _ensureWindowsUserPath() async {
+    final query = await Process.run(
+      'reg.exe',
+      [r'query', r'HKCU\Environment', '/v', 'Path'],
+      stdoutEncoding: systemEncoding,
+      stderrEncoding: systemEncoding,
+    );
+    var current = '';
+    if (query.exitCode == 0) {
+      final matchingLines = '${query.stdout}'
+          .split(RegExp(r'\r?\n'))
+          .where((value) => value.contains('REG_'))
+          .toList();
+      final line = matchingLines.isEmpty ? null : matchingLines.first;
+      if (line != null) {
+        current = line
+            .replaceFirst(RegExp(r'^\s*Path\s+REG_\w+\s+'), '')
+            .trim();
+      }
+    }
+    final entries = current
+        .split(';')
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toList();
+    final alreadyPresent = entries.any(
+      (value) => p.equals(p.normalize(value), p.normalize(binDir.path)),
+    );
+    if (alreadyPresent) return null;
+    final updated = [...entries, binDir.path].join(';');
+    final add = await Process.run(
+      'reg.exe',
+      [
+        'add',
+        r'HKCU\Environment',
+        '/v',
+        'Path',
+        '/t',
+        'REG_EXPAND_SZ',
+        '/d',
+        updated,
+        '/f',
+      ],
+      stdoutEncoding: systemEncoding,
+      stderrEncoding: systemEncoding,
+    );
+    if (add.exitCode == 0) return null;
+    return CliInstallResult(
+      ok: false,
+      message: '命令文件已写入，但没能登记用户 PATH：${add.stderr}'.trim(),
+    );
   }
 
   static bool _isPermission(FileSystemException e) =>

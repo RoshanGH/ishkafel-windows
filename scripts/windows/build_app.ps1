@@ -36,6 +36,10 @@ foreach ($entry in $values.GetEnumerator()) {
 
 Push-Location $projectRoot
 try {
+    & (Join-Path $PSScriptRoot 'build_cli.ps1')
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Windows CLI build failed before app packaging.'
+    }
     & flutter @arguments
     if ($LASTEXITCODE -ne 0) {
         throw 'Windows build failed.'

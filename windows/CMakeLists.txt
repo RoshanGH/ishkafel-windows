@@ -78,6 +78,15 @@ install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
 install(TARGETS ${RENDERER_BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
 
+# `scripts/windows/build_cli.ps1` runs before the app build. Keep the entire
+# Dart AOT bundle together because the executable resolves its native assets
+# relative to this directory.
+set(CLI_BUNDLE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../build/cli/windows_x64/bundle")
+if(EXISTS "${CLI_BUNDLE_DIR}/bin/ishkafel.exe")
+  install(DIRECTORY "${CLI_BUNDLE_DIR}/" DESTINATION "${CMAKE_INSTALL_PREFIX}/cli"
+    COMPONENT Runtime)
+endif()
+
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
 

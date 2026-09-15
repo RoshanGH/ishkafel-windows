@@ -18,7 +18,9 @@ void main() {
   setUp(() {
     temp = Directory.systemTemp.createTempSync('cli_installer');
     bin = Directory(p.join(temp.path, 'usr_local_bin'))..createSync();
-    bundled = File(p.join(temp.path, 'app', 'Resources', 'cli', 'bin', 'ishkafel'));
+    bundled = File(
+      p.join(temp.path, 'app', 'Resources', 'cli', 'bin', 'ishkafel'),
+    );
     bundled.parent.createSync(recursive: true);
     bundled.writeAsStringSync('#!/bin/sh\necho hi\n');
   });
@@ -27,6 +29,10 @@ void main() {
 
   CliInstaller installerWith({File? cli}) =>
       CliInstaller(binDir: bin, bundledCli: cli ?? bundled);
+
+  File shimIn(Directory directory) => File(
+    p.join(directory.path, Platform.isWindows ? 'ishkafel.cmd' : 'ishkafel'),
+  );
 
   group('看状态', () {
     test('包里没带 CLI 就说没带，而不是说没装', () {
@@ -58,7 +64,7 @@ void main() {
     });
 
     test('别处装的同名命令不认成自己装的', () {
-      File(p.join(bin.path, 'ishkafel'))
+      shimIn(bin)
         ..writeAsStringSync('#!/bin/sh\n# 别人家的\n')
         ..parent.createSync(recursive: true);
       expect(installerWith().inspect(), CliStatus.foreign);
@@ -70,10 +76,14 @@ void main() {
       final result = await installerWith().install();
       expect(result.ok, isTrue);
 
-      final shim = File(p.join(bin.path, 'ishkafel'));
+      final shim = shimIn(bin);
       expect(shim.existsSync(), isTrue);
-      final mode = shim.statSync().mode;
-      expect(mode & 0x40, isNot(0), reason: 'owner 要有可执行位');
+      if (!Platform.isWindows) {
+        final mode = shim.statSync().mode;
+        expect(mode & 0x40, isNot(0), reason: 'owner 要有可执行位');
+      } else {
+        expect(shim.readAsStringSync(), contains('chcp 65001'));
+      }
 
       // 用绝对路径而不是软链：bundle 里的可执行文件靠相对路径找 dylib，
       // 软链过去会让它找不到
@@ -83,21 +93,27 @@ void main() {
     test('重复装是幂等的，不会追加成两行', () async {
       await installerWith().install();
       await installerWith().install();
-      final body = File(p.join(bin.path, 'ishkafel')).readAsStringSync();
-      expect('exec'.allMatches(body), hasLength(1));
+      final body = shimIn(bin).readAsStringSync();
+      expect(
+        body.split(Platform.isWindows ? bundled.path : 'exec').length - 1,
+        1,
+      );
     });
 
     test('目录不存在时自己建出来', () async {
       final fresh = Directory(p.join(temp.path, '还没有这个目录'));
-      final result =
-          await CliInstaller(binDir: fresh, bundledCli: bundled).install();
+      final result = await CliInstaller(
+        binDir: fresh,
+        bundledCli: bundled,
+      ).install();
       expect(result.ok, isTrue);
-      expect(File(p.join(fresh.path, 'ishkafel')).existsSync(), isTrue);
+      expect(shimIn(fresh).existsSync(), isTrue);
     });
 
     test('包里没带 CLI 时不假装装上了', () async {
-      final result =
-          await installerWith(cli: File(p.join(temp.path, '不存在'))).install();
+      final result = await installerWith(
+        cli: File(p.join(temp.path, '不存在')),
+      ).install();
       expect(result.ok, isFalse);
       expect(result.message, contains('这个版本没有带命令行工具'));
     });
@@ -108,24 +124,25 @@ void main() {
       await Process.run('chmod', ['555', locked.path]);
       addTearDown(() => Process.run('chmod', ['755', locked.path]));
 
-      final result =
-          await CliInstaller(binDir: locked, bundledCli: bundled).install();
+      final result = await CliInstaller(
+        binDir: locked,
+        bundledCli: bundled,
+      ).install();
       expect(result.ok, isFalse);
       expect(result.needsAdmin, isTrue);
       expect(result.message, contains('管理员'));
-    });
+    }, skip: Platform.isWindows ? 'Windows 默认写用户目录，不走 chmod 权限位' : false);
   });
 
   group('卸', () {
     test('只删自己装的那个', () async {
       await installerWith().install();
       expect(await installerWith().uninstall(), isTrue);
-      expect(File(p.join(bin.path, 'ishkafel')).existsSync(), isFalse);
+      expect(shimIn(bin).existsSync(), isFalse);
     });
 
     test('别人家的同名命令不碰', () async {
-      final foreign = File(p.join(bin.path, 'ishkafel'))
-        ..writeAsStringSync('别人家的');
+      final foreign = shimIn(bin)..writeAsStringSync('别人家的');
       expect(await installerWith().uninstall(), isFalse);
       expect(foreign.existsSync(), isTrue, reason: '不是我们装的就不许删');
     });

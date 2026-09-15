@@ -69,24 +69,35 @@ class UpdateService {
     AppUpdater? updater,
     Directory? workDir,
     Directory? currentApp,
-  })  : updater = updater ?? AppUpdater(),
-        workDir = workDir ??
-            Directory(p.join(Directory.systemTemp.path, 'ishkafel_update')),
-        currentApp = currentApp ?? _runningApp();
+  }) : updater = updater ?? AppUpdater(),
+       workDir =
+           workDir ??
+           Directory(p.join(Directory.systemTemp.path, 'ishkafel_update')),
+       currentApp = currentApp ?? _runningApp();
 
   /// `<app>/Contents/MacOS/ishkafel` → `<app>`
-  static Directory _runningApp() {
-    final macos = File(Platform.resolvedExecutable).parent;
-    return macos.parent.parent;
+  static Directory _runningApp() => runningAppFrom(Platform.resolvedExecutable);
+
+  static Directory runningAppFrom(
+    String executable, {
+    String? operatingSystem,
+  }) {
+    final os = operatingSystem ?? Platform.operatingSystem;
+    final context = p.Context(
+      style: os == 'windows' ? p.Style.windows : p.Style.posix,
+    );
+    final executableDir = context.dirname(executable);
+    if (os == 'windows') return Directory(executableDir);
+    return Directory(context.dirname(context.dirname(executableDir)));
   }
 
   TosSigner get _signer => const TosSigner(
-        accessKey: UpdateConfig.accessKey,
-        secretKey: UpdateConfig.secretKey,
-        region: UpdateConfig.region,
-        bucket: UpdateConfig.bucket,
-        endpoint: UpdateConfig.endpoint,
-      );
+    accessKey: UpdateConfig.accessKey,
+    secretKey: UpdateConfig.secretKey,
+    region: UpdateConfig.region,
+    bucket: UpdateConfig.bucket,
+    endpoint: UpdateConfig.endpoint,
+  );
 
   /// 查一次。**查不到就当没有新版本**——网络不通不该弹一个错误框吓人
   Future<ReleaseManifest?> check({
@@ -97,8 +108,10 @@ class UpdateService {
     try {
       // 清单也私有：用同一对只读凭据换一条短效链接。有效期给得很短——
       // 它只是拿来读一次的
-      final url = _signer.presignGet(UpdateConfig.manifestKey,
-          ttl: const Duration(minutes: 5));
+      final url = _signer.presignGet(
+        UpdateConfig.manifestKey,
+        ttl: const Duration(minutes: 5),
+      );
       final raw = await (fetch ?? _fetch)(url);
       if (raw == null) return null;
       final m = ReleaseManifest.tryParse(raw);
@@ -114,8 +127,7 @@ class UpdateService {
   }
 
   static Future<String?> _fetch(String url) async {
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 8);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
       final res = await (await client.getUrl(Uri.parse(url))).close();
       if (res.statusCode != HttpStatus.ok) return null;
@@ -135,8 +147,12 @@ class UpdateService {
   }) async {
     try {
       if (!updater.canReplace(currentApp)) {
-        onState(UpdateFailed('没有权限替换「${currentApp.path}」。'
-            '把 app 拖到「应用程序」里再试，或者让管理员来装。'));
+        onState(
+          UpdateFailed(
+            '没有权限替换「${currentApp.path}」。'
+            '把 app 拖到「应用程序」里再试，或者让管理员来装。',
+          ),
+        );
         return;
       }
       if (workDir.existsSync()) workDir.deleteSync(recursive: true);
@@ -145,18 +161,31 @@ class UpdateService {
       final url = _signer.presignGet(release.objectKey);
       final zip = File(p.join(workDir.path, p.basename(release.objectKey)));
       onState(UpdateDownloading(release, 0, release.sizeBytes));
-      await updater.download(url, zip,
-          onProgress: (got, total) => onState(UpdateDownloading(
-              release, got, total > 0 ? total : release.sizeBytes)));
+      await updater.download(
+        url,
+        zip,
+        onProgress: (got, total) => onState(
+          UpdateDownloading(
+            release,
+            got,
+            total > 0 ? total : release.sizeBytes,
+          ),
+        ),
+      );
 
       onState(UpdateInstalling(release));
       await updater.verifySha256(zip, release.sha256);
-      final app =
-          await updater.unpack(zip, Directory(p.join(workDir.path, 'unpacked')));
+      final app = await updater.unpack(
+        zip,
+        Directory(p.join(workDir.path, 'unpacked')),
+      );
       await updater.verifySignature(app);
 
       await updater.handOff(
-          newApp: app, currentApp: currentApp, workDir: workDir);
+        newApp: app,
+        currentApp: currentApp,
+        workDir: workDir,
+      );
       await onExit();
     } on UpdateException catch (e) {
       onState(UpdateFailed(e.message));
@@ -194,7 +223,9 @@ class UpdateService {
     }
     try {
       final skill = SkillInstaller.forCurrentUser(
-          markdown: agentSkillMarkdown, version: appVersion);
+        markdown: agentSkillMarkdown,
+        version: appVersion,
+      );
       final status = skill.inspect();
       // **只给已经装过的人更新**：没装过说明他不用 Agent，
       // 升级时替他往家目录里塞文件是多管闲事

@@ -71,8 +71,11 @@ class MaterialStager {
 
   void _hardLinkOrCopy(String source, String dest) {
     if (File(dest).existsSync()) return;
-    // Dart 没有 link(2) 绑定，走 ln；失败（跨盘 EXDEV 等）就老实复制
-    final r = Process.runSync('/bin/ln', [source, dest]);
+    // Dart 没有硬链接绑定：Windows 用 mklink /H，macOS/Linux 用 ln；
+    // 失败（跨盘 EXDEV、权限策略等）就老实复制。
+    final r = Platform.isWindows
+        ? Process.runSync('cmd.exe', ['/d', '/c', 'mklink', '/H', dest, source])
+        : Process.runSync('/bin/ln', [source, dest]);
     if (r.exitCode == 0 && File(dest).existsSync()) return;
     File(source).copySync(dest);
   }
