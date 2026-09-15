@@ -37,6 +37,20 @@ class PlatformShell {
       ? _runChecked('explorer.exe', ['/select,', path])
       : _runChecked('open', ['-R', path]);
 
+  /// 启动同一产品在两个桌面系统上的应用入口。
+  Future<void> launchApplication({
+    required String macOSName,
+    String? windowsExecutable,
+  }) {
+    if (operatingSystem != 'windows') {
+      return _runChecked('open', ['-a', macOSName]);
+    }
+    if (windowsExecutable == null || windowsExecutable.trim().isEmpty) {
+      throw StateError('缺少 Windows 应用程序路径');
+    }
+    return _runChecked(windowsExecutable, const []);
+  }
+
   Future<void> _runChecked(String executable, List<String> arguments) async {
     final result = await run(executable, arguments);
     if (result.exitCode == 0) return;

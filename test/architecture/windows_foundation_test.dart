@@ -86,6 +86,8 @@ void main() {
     for (final path in const [
       'lib/features/export/export_dialog.dart',
       'lib/features/settings/sections/about_section.dart',
+      'lib/features/workbench/workbench_page.dart',
+      'lib/features/director/director_page.dart',
     ]) {
       final source = File(path).readAsStringSync();
       expect(

@@ -77,6 +77,7 @@ import '../../core/subtitle/subtitle_style.dart';
 import 'export_readiness.dart';
 import '../../core/jianying/jianying_plan.dart';
 import '../../core/jianying/jianying_writer.dart';
+import '../../core/platform/platform_shell.dart';
 import 'script_export_dialog.dart';
 import '../shared/subtitle_style_sheet.dart';
 import 'voice_select_dialog.dart';
@@ -902,8 +903,8 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
         content: Text('成片已导出：$out'),
         duration: const Duration(seconds: 6),
         action: SnackBarAction(
-          label: '在访达中显示',
-          onPressed: () => Process.run('open', ['-R', out]),
+          label: PlatformShell().revealLabel,
+          onPressed: () => PlatformShell().revealPath(out),
         ),
       ));
     } on ScriptExportException catch (e) {
@@ -4149,13 +4150,20 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Process.run('open', ['-R', result.folder]),
-              child: const Text('在访达中显示'),
+              onPressed: () => PlatformShell().revealPath(result.folder),
+              child: Text(PlatformShell().revealLabel),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop();
-                Process.run('open', ['-a', jianyingAppName]);
+                try {
+                  await launchJianying();
+                } catch (error) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(content: Text('$error')),
+                  );
+                }
               },
               child: const Text('打开剪映'),
             ),
@@ -5154,4 +5162,3 @@ class _SublineCutDialogState extends State<_SublineCutDialog> {
         ],
       );
 }
-
