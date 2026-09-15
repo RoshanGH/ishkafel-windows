@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -100,8 +102,7 @@ class EnvironmentBanners extends ConsumerWidget {
         NoticeBanner(
           icon: Icons.error_outline,
           color: AppColors.red,
-          message: '未检测到视频处理组件（${mediaTools.missingTools.join('、')}），'
-              '导入与分析都无法进行。请在终端执行 brew install ffmpeg 安装后重启本应用。',
+          message: missingMediaToolsBannerText(mediaTools.missingTools),
         ),
       if (ref.watch(analysisPipelineProvider) == null)
         NoticeBanner(
@@ -120,6 +121,16 @@ class EnvironmentBanners extends ConsumerWidget {
     if (banners.isEmpty) return const SizedBox.shrink();
     return Column(mainAxisSize: MainAxisSize.min, children: banners);
   }
+}
+
+String missingMediaToolsBannerText(
+  List<String> missingTools, {
+  String? operatingSystem,
+}) {
+  final prefix = '未检测到视频处理组件（${missingTools.join('、')}），导入与分析都无法进行。';
+  return (operatingSystem ?? Platform.operatingSystem) == 'windows'
+      ? '$prefix Windows 正式包本应内置这些组件，请重新安装完整版本。'
+      : '$prefix 请在终端执行 brew install ffmpeg 安装后重启本应用。';
 }
 
 /// AI 分析不可用时的横幅文案。

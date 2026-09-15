@@ -201,7 +201,12 @@ void main() {
       // 空状态下首屏的「准备工作」清单也会说同一件事，因此不是唯一一处。
       // 这条测试盯的是**常驻横幅**：列表里有任务时它是唯一的提示。
       expect(find.byType(NoticeBanner), findsWidgets);
-      expect(find.textContaining('brew install ffmpeg'), findsWidgets);
+      if (Platform.isWindows) {
+        expect(find.textContaining('重新安装完整版本'), findsWidgets);
+        expect(find.textContaining('brew install ffmpeg'), findsNothing);
+      } else {
+        expect(find.textContaining('brew install ffmpeg'), findsWidgets);
+      }
     });
 
     testWidgets('工具就绪时不显示横幅', (tester) async {

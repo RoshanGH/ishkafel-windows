@@ -6,8 +6,10 @@
 class UpdateConfig {
   /// 清单在 bucket 里的对象键。**它也是私有的**——app 本来就带着只读凭据，
   /// 用同一把钥匙去读清单，就不用再维护一个公开地址、也不用操心 ACL
-  static const manifestKey = String.fromEnvironment('UPDATE_TOS_MANIFEST_KEY',
-      defaultValue: 'latest.json');
+  static const manifestKey = String.fromEnvironment(
+    'UPDATE_TOS_MANIFEST_KEY',
+    defaultValue: 'windows/latest.json',
+  );
 
   static const region = String.fromEnvironment('UPDATE_TOS_REGION');
   static const bucket = String.fromEnvironment('UPDATE_TOS_BUCKET');

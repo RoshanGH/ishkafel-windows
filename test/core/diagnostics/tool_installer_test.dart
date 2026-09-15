@@ -140,9 +140,49 @@ void main() {
   });
 
   test('ffprobe 跟着 ffmpeg 一起装，不另开一条配方', () {
-    expect(InstallRecipes.forTool('ffprobe'), same(InstallRecipes.ffmpeg));
-    expect(InstallRecipes.forTool('ffmpeg'), same(InstallRecipes.ffmpeg));
-    expect(InstallRecipes.forTool('不存在的工具'), isNull);
+    expect(
+      InstallRecipes.forTool('ffprobe', operatingSystem: 'macos'),
+      same(InstallRecipes.ffmpeg),
+    );
+    expect(
+      InstallRecipes.forTool('ffmpeg', operatingSystem: 'macos'),
+      same(InstallRecipes.ffmpeg),
+    );
+    expect(
+      InstallRecipes.forTool('不存在的工具', operatingSystem: 'macos'),
+      isNull,
+    );
+  });
+
+  group('Windows 配方不照搬 macOS', () {
+    test('内置 ffmpeg 损坏只能重装完整包，不提供 brew 安装按钮', () {
+      expect(
+        InstallRecipes.forTool('ffmpeg', operatingSystem: 'windows'),
+        isNull,
+      );
+      expect(
+        InstallRecipes.forTool('ffprobe', operatingSystem: 'windows'),
+        isNull,
+      );
+    });
+
+    test('miaoa 没有官方 Windows 安装器前不执行 bash 脚本', () {
+      expect(
+        InstallRecipes.forTool('miaoa', operatingSystem: 'windows'),
+        isNull,
+      );
+    });
+
+    test('Windows 人声分离仍可用 uv，但提示里没有 Homebrew', () {
+      final recipe = InstallRecipes.forTool(
+        'audio-separator',
+        operatingSystem: 'windows',
+      );
+      expect(recipe, isNotNull);
+      expect(recipe!.command, contains('audio-separator[cpu]'));
+      expect(recipe.prerequisiteHint, contains('uv'));
+      expect(recipe.prerequisiteHint, isNot(contains('brew')));
+    });
   });
 }
 

@@ -1,0 +1,9 @@
+{
+  "package": "Microsoft.Windows.SDK.BuildTools",
+  "version": "10.0.26100.9169",
+  "sdkBinVersion": "10.0.26100.0",
+  "architecture": "x64",
+  "archiveUrl": "https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.buildtools/10.0.26100.9169/microsoft.windows.sdk.buildtools.10.0.26100.9169.nupkg",
+  "archiveSha256": "6000c971fc9155052a8359779b30b6682c39e091664d83b3852c4702ab6d238e",
+  "licenseUrl": "https://aka.ms/WinSDKLicenseURL"
+}

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ArchivePath = '',
     [string]$ExpectedSha256 = '',
     [string]$OutputDirectory = '',

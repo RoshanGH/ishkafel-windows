@@ -158,10 +158,10 @@ class _ToolInstallPanelState extends State<ToolInstallPanel> {
           border: Border.all(color: AppColors.border),
         ),
         child: SelectableText(widget.recipe.displayCommand,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: AppFontSize.caption,
                 height: 1.5,
-                fontFamily: 'Menlo',
+                fontFamily: platformMonospaceFontFamily,
                 color: AppColors.accentBlueLight)),
       );
 
@@ -179,10 +179,10 @@ class _ToolInstallPanelState extends State<ToolInstallPanel> {
           controller: _scroll,
           itemCount: _lines.length,
           itemBuilder: (_, i) => Text(_lines[i],
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: AppFontSize.micro,
                   height: 1.5,
-                  fontFamily: 'Menlo',
+                  fontFamily: platformMonospaceFontFamily,
                   color: AppColors.textTertiary)),
         ),
       );

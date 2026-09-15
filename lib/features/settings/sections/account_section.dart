@@ -180,10 +180,10 @@ class _LoggedIn extends ConsumerWidget {
             ),
             const SizedBox(height: AppSpacing.md),
             if (auth == null)
-              const Text('请在终端执行：miaoa tenant list 然后 miaoa tenant select <ID>',
+              Text('请在终端执行：miaoa tenant list 然后 miaoa tenant select <ID>',
                   style: TextStyle(
                       fontSize: AppFontSize.caption,
-                      fontFamily: 'Menlo',
+                      fontFamily: platformMonospaceFontFamily,
                       color: AppColors.textSecondary))
             else
               FilledButton(
@@ -360,9 +360,9 @@ class _CommandBoxState extends State<_CommandBox> {
           children: [
             Expanded(
               child: SelectableText(widget.command,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: AppFontSize.body,
-                      fontFamily: 'Menlo',
+                      fontFamily: platformMonospaceFontFamily,
                       color: AppColors.accentBlueLight)),
             ),
             TextButton(

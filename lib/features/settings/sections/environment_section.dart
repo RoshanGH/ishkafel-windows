@@ -123,9 +123,9 @@ class _ToolRow extends ConsumerWidget {
                   const SizedBox(height: AppSpacing.xs),
                   if (tool.path != null)
                     SelectableText(tool.path!,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: AppFontSize.caption,
-                            fontFamily: 'Menlo',
+                            fontFamily: platformMonospaceFontFamily,
                             color: AppColors.textTertiary)),
                   if (tool.version != null)
                     Text(tool.version!,

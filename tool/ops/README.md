@@ -7,7 +7,7 @@
 
 | 资源 | 名字 | 干什么 |
 |---|---|---|
-| TOS 桶 | `ishkafel-release`（cn-beijing，**私有**） | 存安装包和 `latest.json` |
+| TOS 桶 | `ishkafel-release`（cn-beijing，**私有**） | Windows 包放在 `windows/releases/`，清单是 `windows/latest.json` |
 | IAM 子用户 | `ishkafel-updater` | 它的 AK/SK 编进产物，供 app 读包 |
 | IAM 策略 | `ishkafel-release-readonly` | 只允许 `tos:GetObject` 这一个桶 |
 

@@ -91,6 +91,18 @@ class UpdateService {
     return Directory(context.dirname(context.dirname(executableDir)));
   }
 
+  static String replacePermissionMessage(
+    Directory currentApp, {
+    String? operatingSystem,
+  }) {
+    if ((operatingSystem ?? Platform.operatingSystem) == 'windows') {
+      return '没有权限替换「${currentApp.path}」。如果这是 MSIX 安装版，请下载并安装'
+          '新版 MSIX；便携版请解压到当前用户可写目录后重试。';
+    }
+    return '没有权限替换「${currentApp.path}」。'
+        '把 app 拖到「应用程序」里再试，或者让管理员来装。';
+  }
+
   TosSigner get _signer => const TosSigner(
     accessKey: UpdateConfig.accessKey,
     secretKey: UpdateConfig.secretKey,
@@ -147,12 +159,7 @@ class UpdateService {
   }) async {
     try {
       if (!updater.canReplace(currentApp)) {
-        onState(
-          UpdateFailed(
-            '没有权限替换「${currentApp.path}」。'
-            '把 app 拖到「应用程序」里再试，或者让管理员来装。',
-          ),
-        );
+        onState(UpdateFailed(replacePermissionMessage(currentApp)));
         return;
       }
       if (workDir.existsSync()) workDir.deleteSync(recursive: true);

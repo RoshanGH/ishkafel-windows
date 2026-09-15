@@ -55,6 +55,16 @@ void main() {
     );
   });
 
+  test('Windows 无写权限时指向 MSIX/用户目录，不出现 macOS 应用程序文案', () {
+    final message = UpdateService.replacePermissionMessage(
+      Directory(r'C:\Program Files\WindowsApps\RoshanGH.IshkafelWindows'),
+      operatingSystem: 'windows',
+    );
+    expect(message, contains('MSIX'));
+    expect(message, contains('用户可写目录'));
+    expect(message, isNot(contains('应用程序')));
+  });
+
   group('升级之后的收尾', () {
     test('说明书没装过的人不给他装——那是多管闲事', () {
       // 只验意图写在代码里：inspect().outdated 非空才装

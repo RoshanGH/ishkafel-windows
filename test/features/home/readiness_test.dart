@@ -16,12 +16,14 @@ Readiness _readiness({
   MiaoaAccountStatus? account = _loggedIn,
   bool credentials = true,
   bool debugBuild = false, // 默认按正式版测；调试版文案单独一条用例
+  String operatingSystem = 'macos',
 }) =>
     Readiness.from(
         mediaTools: tools,
         account: account,
         credentialsReady: credentials,
-        debugBuild: debugBuild);
+        debugBuild: debugBuild,
+        operatingSystem: operatingSystem);
 
 void main() {
   group('准备工作清单（同事双击打开就用，没人给他做培训）', () {
@@ -58,6 +60,17 @@ void main() {
       expect(item.ready, isFalse);
       expect(item.hint, contains('brew install ffmpeg'));
       expect(item.hint, anyOf(contains('导入'), contains('分析')));
+    });
+
+    test('Windows 缺内置 ffmpeg：要求重装完整包，不让用户去装 Homebrew', () {
+      final item = _readiness(
+        tools: const MediaToolsStatus(),
+        operatingSystem: 'windows',
+      ).items.firstWhere((i) => i.title == '视频处理组件');
+
+      expect(item.hint, contains('重新安装'));
+      expect(item.hint, contains('内置'));
+      expect(item.hint, isNot(contains('brew')));
     });
 
     test('未登录 miaoa：说明没有标签组就检索不到候选素材', () {

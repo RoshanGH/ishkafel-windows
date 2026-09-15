@@ -1,3 +1,12 @@
+import 'dart:io';
+
+String monospaceFontFamily([String? operatingSystem]) =>
+    (operatingSystem ?? Platform.operatingSystem) == 'windows'
+    ? 'Consolas'
+    : 'Menlo';
+
+String get platformMonospaceFontFamily => monospaceFontFamily();
+
 /// 字号阶梯 token
 ///
 /// 改造前全项目散落 10 / 10.5 / 11 / 11.5 / 12 / 12.5 / 13 / 15 共 8 种字号，

@@ -1,9 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ishkafel/app/theme/app_typography.dart';
 
 void main() {
-  test('Windows 正式构建只能走注入八个配置的脚本', () {
+  test('Windows 正式构建只能走注入全部配置的脚本', () {
     final script = File('scripts/windows/build_app.ps1').readAsStringSync();
     for (final name in const [
       'ARK_API_KEY',
@@ -14,13 +15,14 @@ void main() {
       'UPDATE_TOS_ENDPOINT',
       'UPDATE_TOS_AK',
       'UPDATE_TOS_SK',
+      'UPDATE_TOS_MANIFEST_KEY',
     ]) {
       expect(script, contains(name), reason: '$name 没有进入构建配置');
     }
     expect(
       script,
       contains(r'--dart-define=$($entry.Key)=$($entry.Value)'),
-      reason: '八个配置没有转换成 flutter 的 dart define 参数',
+      reason: '构建配置没有转换成 flutter 的 dart define 参数',
     );
     expect(
       script,
@@ -52,7 +54,13 @@ void main() {
       'scripts/windows/check_environment.ps1',
       'scripts/windows/build_app.ps1',
       'scripts/windows/build_cli.ps1',
+      'scripts/windows/capture_app.ps1',
+      'scripts/windows/package_app.ps1',
+      'scripts/windows/prepare_media_tools.ps1',
       'scripts/windows/sync_upstream.ps1',
+      'scripts/windows/test_distribution.ps1',
+      'scripts/windows/test_media_pipeline.ps1',
+      'scripts/windows/test_renderer.ps1',
     ]) {
       final bytes = File(path).readAsBytesSync();
       final hasUtf8Bom =
@@ -98,6 +106,20 @@ void main() {
     }
   });
 
+  test('1440×900 指客户区，不让 Windows 标题栏吃掉产品画布', () {
+    final source = File('windows/runner/win32_window.cpp').readAsStringSync();
+    final create = source.substring(
+      source.indexOf('bool Win32Window::Create('),
+      source.indexOf('bool Win32Window::Show()'),
+    );
+    expect(create, contains('AdjustWindowRectExForDpi'));
+    expect(create, contains('desired_client'));
+    expect(
+      create.indexOf('AdjustWindowRectExForDpi'),
+      lessThan(create.indexOf('CreateWindow(')),
+    );
+  });
+
   test('业务页面不使用 HOME 手工拼 Windows 用户目录', () {
     for (final path in const [
       'lib/features/director/director_page.dart',
@@ -141,5 +163,25 @@ void main() {
     expect(differences, contains('Ctrl'));
     expect(differences, contains('资源管理器'));
     expect(differences, contains('Videos'));
+  });
+
+  test('Windows 等宽文本使用系统自带 Consolas，不依赖 Mac Menlo', () {
+    final typography = File(
+      'lib/app/theme/app_typography.dart',
+    ).readAsStringSync();
+    expect(monospaceFontFamily('windows'), 'Consolas');
+    expect(typography, contains("'Consolas'"));
+    for (final path in const [
+      'lib/features/workbench/tag_trace_section.dart',
+      'lib/features/settings/tool_install_panel.dart',
+      'lib/features/settings/sections/environment_section.dart',
+      'lib/features/settings/sections/account_section.dart',
+    ]) {
+      expect(
+        File(path).readAsStringSync(),
+        isNot(contains("fontFamily: 'Menlo'")),
+        reason: '$path 不应在 Windows 构建里硬编码 Mac 字体',
+      );
+    }
   });
 }
