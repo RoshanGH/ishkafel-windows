@@ -30,6 +30,6 @@
 
 ## Task 4：回归、合并与远端验证
 
-- [ ] `flutter analyze`、完整 `flutter test`、Windows Release 构建、字幕与媒体冒烟全部通过。
-- [ ] 审查与 Mac 上游的共享代码差异，确认平台判断均收口且 Mac 测试未退化。
+- [x] `flutter analyze`、完整 `flutter test`、Windows Release 构建、字幕与媒体冒烟全部通过。
+- [x] 审查与 Mac 上游的共享代码差异，确认平台判断均收口且 Mac 测试未退化。
 - [ ] 合并到 `main`、SSH 推送并守候 Windows CI 全绿。
