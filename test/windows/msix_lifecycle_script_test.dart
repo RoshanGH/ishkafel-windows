@@ -16,7 +16,8 @@ void main() {
     expect(source, contains('productionSigningRequired'));
     expect(source, contains('WindowsBuiltInRole]::Administrator'));
     expect(source, contains('ISHKAFEL_DATA_DIR'));
-    expect(source, contains('cli\\bin\\ishkafel.exe'));
+    expect(source, contains(r'Microsoft\WindowsApps\ishkafel.exe'));
+    expect(source, isNot(contains(r"InstallLocation 'cli\bin\ishkafel.exe'")));
     expect(source, contains('finally'));
     expect(source, contains('Refusing'));
   });

@@ -86,6 +86,20 @@ try {
     if ($appxManifest.Package.Identity.Version -ne [string]$metadata.msixVersion) {
         throw 'MSIX manifest 版本与 distribution.json 不一致。'
     }
+    $cliAliasExtension = $appxManifest.SelectSingleNode(
+        "//*[local-name()='Extension' and @Category='windows.appExecutionAlias' " +
+        "and @Executable='cli\bin\ishkafel.exe']"
+    )
+    $cliAlias = if ($null -eq $cliAliasExtension) {
+        $null
+    } else {
+        $cliAliasExtension.SelectSingleNode(
+            ".//*[local-name()='ExecutionAlias' and @Alias='ishkafel.exe']"
+        )
+    }
+    if ($null -eq $cliAliasExtension -or $null -eq $cliAlias) {
+        throw 'MSIX 没有把包内 CLI 注册为 ishkafel.exe 应用执行别名。'
+    }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $portablePath = Join-Path $DistributionDirectory ([string]$portableArtifact[0].file)

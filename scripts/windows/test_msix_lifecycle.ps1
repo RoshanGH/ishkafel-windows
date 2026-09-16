@@ -79,7 +79,10 @@ try {
         throw 'Initial MSIX installation version does not match distribution metadata.'
     }
 
-    $installedCli = Join-Path $installed.InstallLocation 'cli\bin\ishkafel.exe'
+    $installedCli = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\ishkafel.exe'
+    if (-not (Test-Path -LiteralPath $installedCli -PathType Leaf)) {
+        throw 'MSIX installation did not register the ishkafel.exe CLI execution alias.'
+    }
     $help = & $installedCli --help 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0 -or $help -notmatch 'ishkafel') {
         throw 'Installed CLI did not start or did not preserve expected help output.'
