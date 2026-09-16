@@ -46,9 +46,9 @@ class InstallRecipe {
   /// 展示给用户看的那一行。**环境变量也要写出来**——用的是哪个镜像源属于
   /// 「这条命令到底会做什么」的一部分，藏起来就不算给看过
   String get displayCommand => [
-        for (final e in environment.entries) '${e.key}=${e.value}',
-        ...command.map((a) => a.contains(' ') ? '"$a"' : a),
-      ].join(' ');
+    for (final e in environment.entries) '${e.key}=${e.value}',
+    ...command.map((a) => a.contains(' ') ? '"$a"' : a),
+  ].join(' ');
 }
 
 /// 国内镜像源。
@@ -94,9 +94,10 @@ abstract final class InstallRecipes {
     command: ['brew', 'install', 'ffmpeg'],
     description: '安装视频处理组件（走清华镜像，约 2~5 分钟）',
     environment: Mirrors.brew,
-    prerequisiteHint: '需要先装 Homebrew。请在终端执行官网给出的安装命令'
+    prerequisiteHint:
+        '需要先装 Homebrew。请在终端执行官网给出的安装命令'
         '（brew.sh），装好后回到这里点「重新检测」；'
-            '命令行那头跑 ishkafel doctor 复查。',
+        '命令行那头跑 ishkafel doctor 复查。',
   );
 
   /// miaoa CLI：官方安装脚本，**按平台下对应的二进制**
@@ -116,22 +117,35 @@ abstract final class InstallRecipes {
     tool: 'audio-separator',
     requires: 'uv',
     command: ['uv', 'tool', 'install', 'audio-separator[cpu]'],
-    description: '安装人声分离工具（走清华镜像，约 1GB / 5~15 分钟；'
+    description:
+        '安装人声分离工具（走清华镜像，约 1GB / 5~15 分钟；'
         '只有换配乐时才用得到）',
     environment: Mirrors.pypi,
-    prerequisiteHint: '需要先装 uv（Python 工具管理器）。请在终端执行 '
+    prerequisiteHint:
+        '需要先装 uv（Python 工具管理器）。请在终端执行 '
         'brew install uv，装好后回到这里点「重新检测」；'
-            '命令行那头跑 ishkafel doctor 复查。',
+        '命令行那头跑 ishkafel doctor 复查。',
   );
 
   static const windowsAudioSeparator = InstallRecipe(
     tool: 'audio-separator',
     requires: 'uv',
-    command: ['uv', 'tool', 'install', 'audio-separator[cpu]'],
-    description: '安装人声分离工具（走清华镜像，约 1GB / 5~15 分钟；'
+    command: [
+      'uv',
+      'tool',
+      'install',
+      '--with',
+      'audioread',
+      '--python',
+      '3.12',
+      'audio-separator[cpu]',
+    ],
+    description:
+        '安装人声分离工具（走清华镜像，约 1GB / 5~15 分钟；'
         '只有换配乐时才用得到）',
     environment: Mirrors.pypi,
-    prerequisiteHint: '需要先安装 Windows 版 uv（Python 工具管理器）。请按 uv 官方文档'
+    prerequisiteHint:
+        '需要先安装 Windows 版 uv（Python 工具管理器）。请按 uv 官方文档'
         '安装，完成后回到这里点「重新检测」；PowerShell 中可运行 '
         'ishkafel doctor 复查。',
   );
@@ -165,18 +179,11 @@ class InstallEvent {
   /// 失败原因（可直接展示）
   final String? failure;
 
-  const InstallEvent.output(String this.line)
-      : done = null,
-        failure = null;
+  const InstallEvent.output(String this.line) : done = null, failure = null;
 
-  const InstallEvent.succeeded()
-      : line = null,
-        done = true,
-        failure = null;
+  const InstallEvent.succeeded() : line = null, done = true, failure = null;
 
-  const InstallEvent.failed(String this.failure)
-      : line = null,
-        done = false;
+  const InstallEvent.failed(String this.failure) : line = null, done = false;
 }
 
 /// 在用户的机器上跑一条安装命令，**逐行把输出交出去**。
@@ -187,7 +194,11 @@ class InstallEvent {
 class ToolInstaller {
   /// 起子进程。抽出来是为了让流程能脱离真实安装单测
   final Future<Process> Function(
-      String executable, List<String> args, Map<String, String> env) start;
+    String executable,
+    List<String> args,
+    Map<String, String> env,
+  )
+  start;
 
   /// 解析可执行文件（GUI 进程的 PATH 里没有 Homebrew 目录，见
   /// [MediaToolsLocator]）
@@ -196,14 +207,16 @@ class ToolInstaller {
   ToolInstaller({
     Future<Process> Function(String, List<String>, Map<String, String>)? start,
     String? Function(String)? resolve,
-  })  : start = start ?? _startWith,
-        resolve = resolve ?? sharedMediaToolsLocator.resolve;
+  }) : start = start ?? _startWith,
+       resolve = resolve ?? sharedMediaToolsLocator.resolve;
 
   /// 起子进程并把镜像源等环境变量**追加**进去（父进程环境照常继承，
   /// 否则 PATH、HOME 全没了，brew 与 uv 都跑不起来）
   static Future<Process> _startWith(
-          String executable, List<String> args, Map<String, String> env) =>
-      Process.start(executable, args, environment: env);
+    String executable,
+    List<String> args,
+    Map<String, String> env,
+  ) => Process.start(executable, args, environment: env);
 
   /// 前置命令在不在。不在就别跑——见 [InstallRecipe.requires]
   bool prerequisiteReady(InstallRecipe recipe) =>
@@ -236,8 +249,11 @@ class ToolInstaller {
       process.stdout.transform(utf8.decoder).transform(const LineSplitter()),
       process.stderr.transform(utf8.decoder).transform(const LineSplitter()),
     ].map((s) => s.listen(lines.add, onError: (Object e) => lines.add('$e')));
-    unawaited(Future.wait(subs.map((s) => s.asFuture<void>()))
-        .whenComplete(lines.close));
+    unawaited(
+      Future.wait(
+        subs.map((s) => s.asFuture<void>()),
+      ).whenComplete(lines.close),
+    );
 
     final tail = <String>[];
     await for (final line in lines.stream) {
@@ -263,8 +279,10 @@ class ToolInstaller {
       return '这台机器的系统或 CPU 架构，miaoa 官方安装脚本不支持。'
           '请把这条信息告诉 miaoa 团队，不要自行下载其它来源的二进制。';
     }
-    final last = tail.reversed.firstWhere((l) => l.trim().isNotEmpty,
-        orElse: () => '');
+    final last = tail.reversed.firstWhere(
+      (l) => l.trim().isNotEmpty,
+      orElse: () => '',
+    );
     return '安装失败（退出码 $code）${last.isEmpty ? '' : '：$last'}';
   }
 
