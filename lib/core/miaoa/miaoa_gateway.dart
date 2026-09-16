@@ -82,10 +82,10 @@ MiaoaException miaoaExitException(
         kind: MiaoaFailureKind.forbidden);
   }
   final kind = classifyMiaoaFailure(errText);
-  // 原始报文只进日志；认不出来的失败尤其要留原文，否则没法排查
+  // 原始报文只进日志；它可能包含访问密钥、JWT、签名 URL 或本地路径，
+  // 即使无法分类也绝不拼进实现了 UserFacingException 的 message。
   AppLog.warn('miaoa $what 失败（exit=$exitCode，$kind）：$errText');
-  return MiaoaException(_withRaw(_guidance(kind, what), kind, errText),
-      kind: kind);
+  return MiaoaException(_guidance(kind, what), kind: kind);
 }
 
 /// 通用语境的中文引导。统一用「素材库」指代 miaoa，除非要用户敲命令
@@ -97,17 +97,5 @@ String _guidance(MiaoaFailureKind kind, String what) => switch (kind) {
       MiaoaFailureKind.forbidden => '没有访问该素材库资源的权限，请联系素材库管理员。',
       MiaoaFailureKind.notFound => '素材库里找不到请求的内容，它可能已被删除。',
       MiaoaFailureKind.network => '连接素材库失败，请检查网络后重试。',
-      // **认不出来的失败要把原文带出来**：分类不了的本来就是没见过的情况，
-      // 这时候「请稍后重试」等于把唯一的线索扔了——日志只进 stderr，
-      // GUI 启动的 app 根本看不到（真机上排查一次「上传查询帧失败」，
-      // 只能另写脚本在终端重跑一遍才看到真正的报文）
       MiaoaFailureKind.unknown => '$what失败，请稍后重试。',
     };
-
-/// 认不出来的失败，把原始报文接在引导语后面（截断，别糊满屏幕）
-String _withRaw(String guidance, MiaoaFailureKind kind, String raw) {
-  if (kind != MiaoaFailureKind.unknown) return guidance;
-  final t = raw.trim().replaceAll('\n', ' ');
-  if (t.isEmpty) return guidance;
-  return '$guidance\n素材库说：${t.length > 200 ? '${t.substring(0, 200)}…' : t}';
-}
