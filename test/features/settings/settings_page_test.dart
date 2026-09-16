@@ -11,6 +11,7 @@ import 'package:ishkafel/core/models/renew_task.dart';
 import 'package:ishkafel/core/storage/cache_usage.dart';
 import 'package:ishkafel/core/storage/task_repository.dart';
 import 'package:ishkafel/features/settings/settings_page.dart';
+import 'package:ishkafel/features/settings/sections/environment_section.dart';
 import 'package:ishkafel/features/settings/settings_providers.dart';
 import 'package:ishkafel/features/settings/settings_widgets.dart';
 import 'package:ishkafel/features/tasks/task_list_controller.dart';
@@ -80,6 +81,14 @@ Future<void> _openSection(WidgetTester tester, String label) async {
 }
 
 void main() {
+  test('Windows 运行环境说明不出现 macOS 与访达', () {
+    final text = environmentPathExplanation(operatingSystem: 'windows');
+    expect(text, contains('Windows'));
+    expect(text, contains('PowerShell'));
+    expect(text, isNot(contains('macOS')));
+    expect(text, isNot(contains('访达')));
+  });
+
   group('分区导航', () {
     testWidgets('四个分区都在，默认停在 miaoa 账号', (tester) async {
       await _pump(tester);

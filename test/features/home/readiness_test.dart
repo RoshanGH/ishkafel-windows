@@ -83,6 +83,16 @@ void main() {
       expect(item.hint, contains('miaoa auth login'));
     });
 
+    test('Windows 未登录提示使用 PowerShell，不沿用 Mac 终端措辞', () {
+      final item = _readiness(
+        account: const MiaoaAccountStatus(loggedIn: false),
+        operatingSystem: 'windows',
+      ).items.firstWhere((i) => i.title == 'miaoa 账号');
+
+      expect(item.hint, contains('PowerShell'));
+      expect(item.hint, contains('miaoa auth login'));
+    });
+
     test('缺云端凭据：说明是打包问题，去找发版的人而不是自己配', () {
       final item = _readiness(credentials: false)
           .items

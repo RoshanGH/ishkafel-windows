@@ -33,6 +33,16 @@ void main() {
       expect(message, contains('miaoa'));
     });
 
+    test('Windows 人声分离工具提示使用 PowerShell', () {
+      final message = missingToolMessage(
+        'audio-separator',
+        operatingSystem: 'windows',
+      );
+
+      expect(message, contains('PowerShell'));
+      expect(message, isNot(contains('brew')));
+    });
+
     test('未知工具名给通用措辞，不冒充具体安装命令', () {
       final message = missingToolMessage('some-tool');
       expect(message, contains('some-tool'));

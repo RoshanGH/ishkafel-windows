@@ -7,7 +7,6 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../core/analysis/audio_extractor.dart';
@@ -43,6 +42,7 @@ import '../../core/log/app_log.dart';
 import '../../core/models/export_record.dart';
 import '../../core/models/renew_task.dart';
 import '../../core/platform/platform_paths.dart';
+import '../../core/presentation/user_facing_error.dart';
 import '../../core/net/http_bytes.dart';
 import '../../core/miaoa/candidate_probe.dart';
 import '../../core/miaoa/miaoa_content_service.dart';
@@ -338,7 +338,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       try {
         decoded = jsonDecode(raw);
       } catch (e) {
-        reply(false, '方案不是合法的 JSON：$e');
+        reply(false, userFacingError(e, fallback: '方案不是合法的 JSON'));
         return;
       }
       final validation = parsePlans(decoded, _task);
@@ -469,7 +469,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       );
     } catch (e) {
       AppLog.warn('代为提交方案失败（${widget.task.id}）：$e');
-      reply(false, '提交失败：$e');
+      reply(false, userFacingError(e, fallback: '提交失败，请稍后重试'));
     } finally {
       _servingRequest = false;
     }
@@ -1341,7 +1341,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
           ? '这条素材分离失败。重试一次，或把这一镜改成「原声」/「不播放」'
           : null);
     } catch (e) {
-      if (mounted) setState(() => _materialSeparationError = '素材分离失败：$e');
+      if (mounted) {
+        setState(() => _materialSeparationError = userFacingError(e,
+            fallback: '素材分离失败，请检查人声分离工具后重试'));
+      }
     } finally {
       if (mounted) setState(() => _separatingMaterial = null);
     }
@@ -1699,7 +1702,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       AppLog.warn('生成配音失败（taskId=${widget.task.id}）：$e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('生成配音失败：$e'),
+          content: Text(userFacingError(e, fallback: '生成配音失败，请稍后重试')),
           backgroundColor: AppColors.red,
         ));
       }
@@ -2101,7 +2104,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       unawaited(_flushAutosave());
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('打标失败：$e'),
+        content: Text(userFacingError(e, fallback: '打标失败，请稍后重试')),
         backgroundColor: AppColors.red,
       ));
     } finally {
@@ -2197,7 +2200,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       AppLog.warn('切分这一段的底片失败（taskId=${_task.id}, U$unitIndex）：$e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('切分失败：$e'),
+        content: Text(userFacingError(e, fallback: '切分失败，请检查原片后重试')),
         backgroundColor: AppColors.red,
       ));
     } finally {
@@ -2323,9 +2326,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         workDir: Directory.systemTemp.createTempSync('ishkafel_wb_'),
       );
     }
-    final supportDir = await getApplicationSupportDirectory();
-    final workDir =
-        Directory(p.join(supportDir.path, 'ishkafel_data', 'analysis_work'));
+    final dataDir = ref.read(dataDirProvider);
+    if (dataDir == null) {
+      throw StateError('工作台缺少数据目录配置');
+    }
+    final workDir = Directory(p.join(dataDir.path, 'analysis_work'));
     return (
       builder: TimelineMediaBuilder(
           thumbnails: ThumbnailService(), audio: AudioExtractor()),
@@ -2624,7 +2629,9 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                 } catch (error) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(this.context).showSnackBar(
-                    SnackBar(content: Text('$error')),
+                    SnackBar(
+                        content: Text(userFacingError(error,
+                            fallback: '操作失败，请稍后重试'))),
                   );
                 }
               },

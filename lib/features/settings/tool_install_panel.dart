@@ -6,6 +6,7 @@ import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../app/theme/app_typography.dart';
 import '../../core/diagnostics/tool_installer.dart';
+import '../../core/presentation/user_facing_error.dart';
 
 /// 一个工具的「装上它」面板：点一下就装，装的过程逐行摆出来。
 ///
@@ -79,7 +80,7 @@ class _ToolInstallPanelState extends State<ToolInstallPanel> {
       setState(() {
         _running = false;
         _done = false;
-        _failure = '$e';
+        _failure = userFacingError(e, fallback: '安装失败，请检查网络后重试');
       });
     });
   }

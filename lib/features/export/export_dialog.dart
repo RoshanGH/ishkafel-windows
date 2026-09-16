@@ -15,6 +15,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/models/export_record.dart';
+import '../../core/presentation/user_facing_error.dart';
 import '../../core/platform/platform_paths.dart';
 import '../../core/platform/platform_shell.dart';
 
@@ -392,7 +393,12 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
       setState(() => _exports = [..._exports, record]);
       await widget.onExported?.call(record);
     } catch (e) {
-      if (mounted) setState(() => _failure = '导出失败：$e');
+      if (mounted) {
+        setState(() => _failure = userFacingError(
+              e,
+              fallback: '导出失败，请检查素材与输出目录后重试',
+            ));
+      }
     } finally {
       _tick?.cancel();
       _tick = null;
@@ -416,7 +422,11 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
       await widget.revealDirectory(path);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _failure = '打不开这个目录：$e');
+      final detail = userFacingError(
+        e,
+        fallback: '请检查目录是否仍然存在',
+      );
+      setState(() => _failure = '打不开这个目录：$detail');
     }
   }
 

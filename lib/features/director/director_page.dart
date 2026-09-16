@@ -78,6 +78,7 @@ import 'export_readiness.dart';
 import '../../core/jianying/jianying_plan.dart';
 import '../../core/jianying/jianying_writer.dart';
 import '../../core/platform/platform_shell.dart';
+import '../../core/presentation/user_facing_error.dart';
 import '../../core/platform/platform_paths.dart';
 import 'script_export_dialog.dart';
 import '../shared/subtitle_style_sheet.dart';
@@ -1516,7 +1517,9 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
         _toast('台词按你录的改了：「$after」');
       }
     } catch (e) {
-      if (mounted) _toast('这段配音没装上：$e');
+      if (mounted) {
+        _toast(userFacingError(e, fallback: '这段配音没有安装成功，请稍后重试'));
+      }
     } finally {
       if (mounted) setState(() => _generatingLineIds.remove(line.id));
     }
@@ -4182,7 +4185,9 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
                 } catch (error) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(this.context).showSnackBar(
-                    SnackBar(content: Text('$error')),
+                    SnackBar(
+                        content: Text(userFacingError(error,
+                            fallback: '操作失败，请稍后重试'))),
                   );
                 }
               },

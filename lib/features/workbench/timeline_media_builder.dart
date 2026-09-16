@@ -102,6 +102,10 @@ class TimelineMediaBuilder {
     int? thumbCount,
     int? waveBuckets,
   }) async {
+    // The production work directory is task data, not a temporary directory
+    // created by the caller. A task's first workbench open therefore reaches
+    // this method before the directory exists.
+    await workDir.create(recursive: true);
     // 抽帧与波形互不依赖，并行推进：此前波形要等 14 张图全抽完才开始，
     // 白白把两件事的耗时串成一条
     final results = await Future.wait([

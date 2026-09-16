@@ -127,7 +127,8 @@ Future<int> runTagGroupsCommand({StringSink? out, StringSink? err}) async {
     }, out: out);
     return 0;
   } catch (e) {
-    (err ?? stderr).writeln('读不到标签组：$e');
-    return 1;
+    final message = e is MiaoaException ? e.message : '$e';
+    (err ?? stderr).writeln('读不到标签组：$message');
+    return exitEnv;
   }
 }

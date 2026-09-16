@@ -11,6 +11,7 @@ import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../app/theme/app_typography.dart';
 import '../../core/log/app_log.dart';
+import '../../core/presentation/user_facing_error.dart';
 import '../../core/miaoa/miaoa_content_service.dart';
 import '../../core/models/renew_task.dart';
 import '../../core/playback/media_kit_playback.dart';
@@ -380,8 +381,9 @@ class _FindShotsSheetState extends State<_FindShotsSheet> {
       if (!mounted) return;
       // **不悄悄退回文字搜**：人点的是「画面相似」，给他一批按文字搜出来的
       // 东西，他不会知道自己看的根本不是相似画面
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('拿这一帧去搜没成：$e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(userFacingError(e,
+              fallback: '拿这一帧搜索失败，请检查网络与素材库登录状态'))));
     }
   }
 

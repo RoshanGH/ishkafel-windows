@@ -11,6 +11,7 @@ import '../../app/theme/app_typography.dart';
 import '../../core/agent_skill/agent_skill_doc.dart';
 import '../../core/agent_skill/skill_installer.dart';
 import '../../core/platform/platform_paths.dart';
+import '../../core/presentation/user_facing_error.dart';
 import 'settings_providers.dart';
 import 'settings_widgets.dart';
 
@@ -68,7 +69,7 @@ class _AgentSkillCardState extends ConsumerState<AgentSkillCard> {
       if (!mounted) return;
       setState(() {
         _failed = true;
-        _message = '存不下来：$e';
+        _message = userFacingError(e, fallback: '保存失败，请检查目录权限后重试');
       });
     }
   }

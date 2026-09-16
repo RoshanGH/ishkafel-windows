@@ -239,12 +239,23 @@ class VocalSeparationException implements Exception {
 ///
 /// 与 miaoa 同一个坑：GUI 进程的 PATH 里没有用户级 bin 目录。`uv tool install`
 /// 装到 `~/.local/bin`，pipx 也是。
-final List<String> vocalSeparatorSearchDirs = List.unmodifiable([
-  if (_home != null) '$_home/.local/bin',
-  ...MediaToolsLocator.defaultSearchDirs,
-]);
+List<String> vocalSeparatorSearchDirsFor({
+  String? operatingSystem,
+  Map<String, String>? environment,
+  List<String>? defaultDirs,
+}) {
+  final os = operatingSystem ?? Platform.operatingSystem;
+  final env = environment ?? Platform.environment;
+  final home = env[os == 'windows' ? 'USERPROFILE' : 'HOME'];
+  final path = p.Context(
+      style: os == 'windows' ? p.Style.windows : p.Style.posix);
+  return List.unmodifiable([
+    if (home != null && home.isNotEmpty) path.join(home, '.local', 'bin'),
+    ...(defaultDirs ?? MediaToolsLocator.defaultSearchDirsFor(os)),
+  ]);
+}
 
-final String? _home = Platform.environment['HOME'];
+final List<String> vocalSeparatorSearchDirs = vocalSeparatorSearchDirsFor();
 
 final _locator = MediaToolsLocator(searchDirs: vocalSeparatorSearchDirs);
 

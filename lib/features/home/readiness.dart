@@ -62,7 +62,7 @@ class Readiness {
     return Readiness(
       items: [
         tools,
-        _accountItem(account),
+        _accountItem(account, resolvedOperatingSystem),
         _credentialsItem(credentialsReady, debugBuild),
       ],
       // 只拦真正做不下去的：没有 ffmpeg 连读取视频信息、抽封面都做不到。
@@ -101,7 +101,8 @@ class Readiness {
     );
   }
 
-  static ReadinessItem _accountItem(MiaoaAccountStatus? status) {
+  static ReadinessItem _accountItem(
+      MiaoaAccountStatus? status, String operatingSystem) {
     if (status == null) {
       return const ReadinessItem(
           title: 'miaoa 账号',
@@ -127,11 +128,12 @@ class Readiness {
         ready: true,
       );
     }
-    return const ReadinessItem(
+    return ReadinessItem(
       title: 'miaoa 账号',
       statusText: '未登录',
       ready: false,
-      hint: '未登录就读不到标签组，也检索不到候选素材。请在终端运行 '
+      hint: '未登录就读不到标签组，也检索不到候选素材。请在'
+          '${operatingSystem == 'windows' ? ' PowerShell' : '终端'}运行 '
           'miaoa auth login 完成登录（手机号 + 短信验证码）。',
     );
   }

@@ -7,6 +7,7 @@ import '../../app/theme/app_typography.dart';
 import '../../core/analysis/tag_vocabulary.dart';
 import '../../core/models/project_ref.dart';
 import '../../core/models/tag_group_ref.dart';
+import '../../core/presentation/user_facing_error.dart';
 import '../tasks/new_task_wizard/wizard_providers.dart';
 
 /// 给一个分子打标签。
@@ -68,7 +69,8 @@ class _BlankUnitTagEditorState extends ConsumerState<BlankUnitTagEditor> {
     } catch (e) {
       if (!mounted) return;
       // 拉不到词表不能变成一个空白面板——用户会以为这个标签组是空的
-      setState(() => _error = '标签读取失败：$e');
+      setState(() => _error = userFacingError(e,
+          fallback: '标签读取失败，请检查素材库登录状态后重试'));
     }
   }
 

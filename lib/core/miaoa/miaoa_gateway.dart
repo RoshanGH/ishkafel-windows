@@ -47,7 +47,10 @@ class MiaoaGateway {
   Future<ProcessResult> raw(List<String> args) async {
     try {
       return await _run(binary, args);
-    } on ProcessException {
+    } on ProcessException catch (_) {
+      throw MiaoaException(missingToolMessage('miaoa'),
+          kind: MiaoaFailureKind.cliMissing);
+    } on MediaToolMissingException catch (_) {
       throw MiaoaException(missingToolMessage('miaoa'),
           kind: MiaoaFailureKind.cliMissing);
     }

@@ -44,6 +44,17 @@ String? valueAfter(List<String> args, String flag) {
 }
 
 void main() {
+  test('Windows 会探测 uv 默认的用户级可执行目录', () {
+    expect(
+      vocalSeparatorSearchDirsFor(
+        operatingSystem: 'windows',
+        environment: const {'USERPROFILE': r'C:\Users\Mayn'},
+        defaultDirs: const [r'C:\Ishkafel\tools'],
+      ),
+      const [r'C:\Users\Mayn\.local\bin', r'C:\Ishkafel\tools'],
+    );
+  });
+
   test('分离出人声与背景两条轨', () async {
     final b = _build();
 

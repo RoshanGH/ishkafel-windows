@@ -91,6 +91,28 @@ void main() {
       return (service: service, calls: calls);
     }
 
+    test('首次打开任务时自动创建尚不存在的媒体工作目录', () async {
+      final missingWorkDir = Directory('${workDir.path}/中文 analysis_work');
+      final thumbs = fakeThumbnails();
+      final audio = fakeAudio();
+
+      final media = await TimelineMediaBuilder(
+        thumbnails: thumbs.service,
+        audio: audio.service,
+      ).build(
+        videoPath: '/v/a.mp4',
+        taskId: 'first-open',
+        durationMs: 3000,
+        workDir: missingWorkDir,
+        thumbCount: 2,
+        waveBuckets: 4,
+      );
+
+      expect(missingWorkDir.existsSync(), isTrue);
+      expect(media.thumbsMissing, 0);
+      expect(media.waveAllSilent, isFalse);
+    });
+
     test('等间隔取 thumbCount 个时间点并写出对应缩略图路径', () async {
       final thumbs = fakeThumbnails();
       final audio = fakeAudio();

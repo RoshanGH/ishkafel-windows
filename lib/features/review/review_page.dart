@@ -16,6 +16,7 @@ import '../../core/ffmpeg/process_runner.dart';
 import '../../core/ffmpeg/thumbnail_service.dart';
 import '../../core/models/renew_task.dart';
 import '../../core/models/semantic_unit.dart';
+import '../../core/presentation/user_facing_error.dart';
 import '../../core/replacement/picked_material.dart';
 import '../../core/review/review_receipt.dart';
 import '../../core/storage/agent_presence.dart';
@@ -540,7 +541,10 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       // 审核完回到来处——它不是终点站，主流程才是
       Navigator.of(context).pop(_outcome());
     } catch (e) {
-      if (mounted) setState(() => _error = '确认失败：$e');
+      if (mounted) {
+        setState(() => _error = userFacingError(e,
+            fallback: '确认失败，改动未保存，请稍后重试'));
+      }
     }
   }
 

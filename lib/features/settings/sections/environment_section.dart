@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,6 +13,18 @@ import '../cli_install_card.dart';
 import '../tool_install_panel.dart';
 import '../settings_providers.dart';
 import '../settings_widgets.dart';
+
+String environmentPathExplanation({String? operatingSystem}) {
+  final os = operatingSystem ?? Platform.operatingSystem;
+  if (os == 'windows') {
+    return '这几个命令行工具负责转码、抽帧与素材检索。路径由应用自己探测——'
+        '从开始菜单启动的 Windows 程序可能拿不到 PowerShell 中刚更新的 PATH，'
+        '所以“PowerShell 里能用”不等于这里能用。';
+  }
+  return '这几个命令行工具负责转码、抽帧与素材检索。路径由应用自己探测——'
+      'macOS 从访达启动的程序拿不到终端里的 PATH，'
+      '所以“终端里能用”不等于这里能用。';
+}
 
 /// 运行环境分区：外部工具的**真实解析路径** + 云端凭据是否齐全。
 ///
@@ -63,9 +77,7 @@ class _Report extends StatelessWidget {
             title: '本地工具',
             children: [
               for (final tool in report.tools) _ToolRow(tool: tool),
-              const SettingsNote('这几个命令行工具负责转码、抽帧与素材检索。'
-                  '路径由应用自己探测——macOS 从访达启动的程序拿不到终端里的 PATH，'
-                  '所以「终端里能用」不等于这里能用。'),
+              SettingsNote(environmentPathExplanation()),
               const SizedBox(height: AppSpacing.sm),
               Align(
                 alignment: Alignment.centerLeft,
