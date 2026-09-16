@@ -106,6 +106,13 @@ class PlatformPaths {
       _underConfiguredStorage('data') ??
       _path.join(applicationSupport, 'ishkafel_data');
 
+  String get exportDirectory =>
+      _nonBlank(environment['ISHKAFEL_EXPORT_DIR']) ??
+      (operatingSystem == 'windows'
+          ? _nonBlank(windowsStorageValue(exportRootValueName))
+          : null) ??
+      _path.join(videosDirectory, 'ishkafel');
+
   String? _underConfiguredStorage(String child) {
     final root = configuredStorageRoot;
     return root == null ? null : _path.join(root, child);

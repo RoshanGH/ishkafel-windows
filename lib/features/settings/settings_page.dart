@@ -9,6 +9,7 @@ import 'sections/about_section.dart';
 import 'sections/account_section.dart';
 import 'sections/cache_section.dart';
 import 'sections/environment_section.dart';
+import 'sections/storage_section.dart';
 
 export 'settings_providers.dart' show appVersion;
 
@@ -23,11 +24,10 @@ class _Section {
 
 /// 分区清单。
 ///
-/// 设计稿里还有一个「导出默认」分区，这里没做——矩阵导出尚未实现，
-/// 给它开一个点进去什么都改不了的分区，就是又添一个死入口。
 const _sections = <_Section>[
   _Section(title: 'miaoa 账号', icon: Icons.account_circle_outlined, build: AccountSection.new),
   _Section(title: '运行环境', icon: Icons.build_outlined, build: EnvironmentSection.new),
+  _Section(title: '存储位置', icon: Icons.folder_outlined, build: StorageSection.new),
   _Section(title: '缓存管理', icon: Icons.storage_outlined, build: CacheSection.new),
   _Section(title: '关于', icon: Icons.info_outline, build: AboutSection.new),
 ];

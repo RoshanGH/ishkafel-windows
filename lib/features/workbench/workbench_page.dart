@@ -90,6 +90,7 @@ import 'workbench_body.dart';
 import 'workbench_chrome.dart';
 import 'workbench_summary.dart';
 import '../export/export_dialog.dart';
+import '../export/default_export_directory.dart';
 import '../../core/storage/agent_presence.dart';
 import '../../core/jianying/jianying_plan.dart' show JianyingPlanException;
 import '../../core/jianying/jianying_writer.dart';
@@ -2758,8 +2759,13 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     if (editor == null) return;
     // 成片放到「影片」目录下按任务分文件夹：跟原片、跟缓存都分开，
     // 用户拿完就走，不必在应用数据目录里翻
-    final outputDir = Directory(p.join(PlatformPaths().videosDirectory, 'ishkafel',
+    final fallbackOutputDir = Directory(p.join(PlatformPaths().videosDirectory, 'ishkafel',
         safePathSegment('${_task.name}_${_task.id}')));
+    final outputDir = initialExportDirectory(
+      lastUsable: _lastUsableExportDir(),
+      configuredDefault: ref.read(defaultExportDirectoryProvider),
+      fallback: fallbackOutputDir,
+    );
     await showExportDialog(
       context,
       taskId: _task.id,
@@ -2787,7 +2793,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       // 上次导到哪儿就默认还导到哪儿——同一个项目往往一直往同一个位置出片。
       // 但临时目录不算数：CLI 测试之类导进 /tmp 的一次性位置被记成默认，
       // 下次成片就会落进重启即清的地方（真机踩过）
-      outputDir: _lastUsableExportDir() ?? outputDir,
+      outputDir: outputDir,
       onExported: _recordExport,
       exports: _task.exports,
       // 整体替换的成片时长跟候选走——不给这个，确认页会按原片长度报，

@@ -69,6 +69,48 @@ void main() {
       expect(paths.isTemporaryPath(r'D:\OneDrive\视频\成片'), isFalse);
     });
 
+    test('Windows 默认导出位置优先用环境变量，其次用注册表', () {
+      final fromRegistry = PlatformPaths(
+        operatingSystem: 'windows',
+        environment: const {
+          'APPDATA': r'C:\Users\Mayn\AppData\Roaming',
+          'USERPROFILE': r'C:\Users\Mayn',
+        },
+        windowsKnownFolder: (_) => null,
+        windowsStorageValue: (name) => name == 'ExportRoot'
+            ? r'D:\Ishkafel\Media\Exports'
+            : null,
+      );
+      final fromEnvironment = PlatformPaths(
+        operatingSystem: 'windows',
+        environment: const {
+          'APPDATA': r'C:\Users\Mayn\AppData\Roaming',
+          'USERPROFILE': r'C:\Users\Mayn',
+          'ISHKAFEL_EXPORT_DIR': r'E:\Automation Exports',
+        },
+        windowsKnownFolder: (_) => null,
+        windowsStorageValue: (_) => r'D:\ignored',
+      );
+
+      expect(fromRegistry.exportDirectory, r'D:\Ishkafel\Media\Exports');
+      expect(fromEnvironment.exportDirectory, r'E:\Automation Exports');
+    });
+
+    test('未配置默认导出位置时仍使用影片目录下的 ishkafel', () {
+      final paths = PlatformPaths(
+        operatingSystem: 'windows',
+        environment: const {
+          'APPDATA': r'C:\Users\Mayn\AppData\Roaming',
+          'USERPROFILE': r'C:\Users\Mayn',
+        },
+        windowsKnownFolder: (name) =>
+            name == 'My Video' ? r'D:\我的视频' : null,
+        windowsStorageValue: (_) => null,
+      );
+
+      expect(paths.exportDirectory, r'D:\我的视频\ishkafel');
+    });
+
     test('macOS 保持现有 bundle id 目录', () {
       final paths = PlatformPaths(
         operatingSystem: 'macos',

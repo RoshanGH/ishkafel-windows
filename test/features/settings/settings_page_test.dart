@@ -90,21 +90,20 @@ void main() {
   });
 
   group('分区导航', () {
-    testWidgets('四个分区都在，默认停在 miaoa 账号', (tester) async {
+    testWidgets('五个分区都在，默认停在 miaoa 账号', (tester) async {
       await _pump(tester);
 
-      for (final name in ['miaoa 账号', '运行环境', '缓存管理', '关于']) {
+      for (final name in ['miaoa 账号', '运行环境', '存储位置', '缓存管理', '关于']) {
         expect(find.text(name), findsWidgets, reason: '$name 分区入口缺失');
       }
       expect(find.text('极创美奥'), findsOneWidget);
     });
 
-    testWidgets('不提供尚未实现的功能的设置项', (tester) async {
+    testWidgets('存储位置不是死入口', (tester) async {
       await _pump(tester);
-
-      expect(find.text('导出默认'), findsNothing,
-          reason: '矩阵导出还没做，给它开一个设置分区等于摆一个点进去什么都改不了'
-              '的死入口——本项目刚清理过一个');
+      await _openSection(tester, '存储位置');
+      expect(find.byKey(const Key('settings-change-storage-root')), findsOneWidget);
+      expect(find.byKey(const Key('settings-change-export-root')), findsOneWidget);
     });
   });
 

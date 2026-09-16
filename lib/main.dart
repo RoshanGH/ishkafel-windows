@@ -27,6 +27,8 @@ import 'cli/commands/open_command.dart';
 import 'core/log/app_log.dart';
 import 'core/platform/platform_paths.dart';
 import 'core/platform/runtime_directories.dart';
+import 'core/platform/storage_migration_service.dart';
+import 'core/platform/windows_storage_preferences.dart';
 import 'core/miaoa/miaoa_account_service.dart';
 import 'core/diagnostics/tool_installer.dart';
 import 'core/miaoa/miaoa_auth_service.dart';
@@ -72,7 +74,10 @@ Future<void> main(List<String> args) async {
   installFlutterErrorForwarding();
   MediaKit.ensureInitialized();
   final supportDir = await getApplicationSupportDirectory();
-  final platformPaths = PlatformPaths();
+  final storagePreferences = WindowsStoragePreferences();
+  final platformPaths = PlatformPaths(
+    windowsStorageValue: storagePreferences.readValue,
+  );
   final runtimeDirectories = RuntimeDirectories(
     supportDirectory: supportDir,
     environment: Platform.environment,
@@ -195,6 +200,23 @@ Future<void> main(List<String> args) async {
         miaoaAuthServiceProvider.overrideWithValue(MiaoaAuthService()),
         toolInstallerProvider.overrideWithValue(ToolInstaller()),
         dataDirProvider.overrideWithValue(dataDir),
+        storageRootProvider.overrideWith(
+          (ref) => platformPaths.configuredStorageRoot,
+        ),
+        defaultExportDirectoryProvider.overrideWith(
+          (ref) => Directory(platformPaths.exportDirectory),
+        ),
+        storageMigrationActionProvider.overrideWithValue(
+          (targetRoot) => StorageMigrationService(
+            activateStorageRoot: storagePreferences.writeStorageRoot,
+          ).copyVerifyAndActivate(
+            sourceDataDirectory: dataDir,
+            targetStorageRoot: targetRoot,
+          ),
+        ),
+        exportRootWriterProvider.overrideWithValue(
+          storagePreferences.writeExportRoot,
+        ),
         // 「生成配音」：凭据齐了才给工厂，否则工作台把按钮禁用并说明原因，
         // 而不是让用户点了之后撞一个网络错误
         // 听一段上传的配音说了什么：和命令行那条路同一份实现

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_selector/file_selector.dart';
 
 import '../../core/diagnostics/environment_report.dart';
 import '../../core/diagnostics/tool_installer.dart';
@@ -9,6 +10,7 @@ import '../../core/miaoa/miaoa_account_service.dart';
 import '../../core/miaoa/miaoa_auth_service.dart';
 import '../../core/storage/cache_usage.dart';
 import '../../core/storage/task_repository.dart';
+import '../../core/platform/storage_migration_service.dart';
 import '../tasks/environment_banner.dart';
 import '../tasks/task_list_controller.dart';
 
@@ -53,6 +55,32 @@ void refreshToolProbes(WidgetRef ref) {
 }
 
 final dataDirProvider = Provider<Directory?>((ref) => null);
+
+typedef SettingsDirectoryPicker = Future<String?> Function(String? initialDirectory);
+typedef StorageMigrationAction = Future<StorageMigrationReport> Function(
+    Directory targetStorageRoot);
+typedef ExportRootWriter = void Function(String path);
+
+/// 当前 Windows 用户配置的存储根目录；null 表示沿用平台默认位置。
+final storageRootProvider = StateProvider<String?>((ref) => null);
+
+/// 新任务/无历史任务的默认导出目录。
+final defaultExportDirectoryProvider = StateProvider<Directory?>((ref) => null);
+
+final storageRootPickerProvider = Provider<SettingsDirectoryPicker>((ref) =>
+    (initialDirectory) => getDirectoryPath(
+        initialDirectory: initialDirectory, confirmButtonText: '选择数据位置'));
+
+final exportRootPickerProvider = Provider<SettingsDirectoryPicker>((ref) =>
+    (initialDirectory) => getDirectoryPath(
+        initialDirectory: initialDirectory, confirmButtonText: '选择导出位置'));
+
+/// null 只用于未接真实文件系统的测试装配。
+final storageMigrationActionProvider =
+    Provider<StorageMigrationAction?>((ref) => null);
+
+/// null 只用于未接 Windows 用户设置的测试装配。
+final exportRootWriterProvider = Provider<ExportRootWriter?>((ref) => null);
 
 /// 执行清理并返回实际释放的字节数（抽成 provider 是为了让页面测试无需真实文件系统）
 typedef CachePurge = Future<int> Function();
