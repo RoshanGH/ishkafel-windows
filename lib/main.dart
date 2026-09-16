@@ -73,10 +73,15 @@ Future<void> main(List<String> args) async {
   // 尽早接管：框架异常默认经 debugPrint 输出，真机直接跑二进制时不可见
   installFlutterErrorForwarding();
   MediaKit.ensureInitialized();
-  final supportDir = await getApplicationSupportDirectory();
   final storagePreferences = WindowsStoragePreferences();
   final platformPaths = PlatformPaths(
     windowsStorageValue: storagePreferences.readValue,
+  );
+  final supportDir = await resolveRuntimeSupportDirectory(
+    operatingSystem: Platform.operatingSystem,
+    configuredStorageRoot: platformPaths.configuredStorageRoot,
+    fallbackSupportPath: platformPaths.applicationSupport,
+    loadDefaultSupportDirectory: getApplicationSupportDirectory,
   );
   final runtimeDirectories = RuntimeDirectories(
     supportDirectory: supportDir,
@@ -207,12 +212,13 @@ Future<void> main(List<String> args) async {
           (ref) => Directory(platformPaths.exportDirectory),
         ),
         storageMigrationActionProvider.overrideWithValue(
-          (targetRoot) => StorageMigrationService(
-            activateStorageRoot: storagePreferences.writeStorageRoot,
-          ).copyVerifyAndActivate(
-            sourceDataDirectory: dataDir,
-            targetStorageRoot: targetRoot,
-          ),
+          (targetRoot) =>
+              StorageMigrationService(
+                activateStorageRoot: storagePreferences.writeStorageRoot,
+              ).copyVerifyAndActivate(
+                sourceDataDirectory: dataDir,
+                targetStorageRoot: targetRoot,
+              ),
         ),
         exportRootWriterProvider.overrideWithValue(
           storagePreferences.writeExportRoot,

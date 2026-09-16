@@ -5,6 +5,41 @@ import 'package:ishkafel/core/platform/runtime_directories.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  group('resolveRuntimeSupportDirectory', () {
+    test('Windows 已配置存储根时不调用会创建 C 盘目录的系统 API', () async {
+      var defaultDirectoryRequested = false;
+
+      final support = await resolveRuntimeSupportDirectory(
+        operatingSystem: 'windows',
+        configuredStorageRoot: r'D:\Ishkafel\UserData',
+        fallbackSupportPath:
+            r'C:\Users\Mayn\AppData\Roaming\com.jichuang\ishkafel',
+        loadDefaultSupportDirectory: () async {
+          defaultDirectoryRequested = true;
+          return Directory(r'C:\created-by-path-provider');
+        },
+      );
+
+      expect(defaultDirectoryRequested, isFalse);
+      expect(
+        support.path,
+        r'C:\Users\Mayn\AppData\Roaming\com.jichuang\ishkafel',
+      );
+    });
+
+    test('没有配置存储根时继续使用系统默认目录 API', () async {
+      final support = await resolveRuntimeSupportDirectory(
+        operatingSystem: 'windows',
+        configuredStorageRoot: null,
+        fallbackSupportPath: r'C:\fallback-only',
+        loadDefaultSupportDirectory: () async =>
+            Directory(r'C:\created-by-path-provider'),
+      );
+
+      expect(support.path, r'C:\created-by-path-provider');
+    });
+  });
+
   group('RuntimeDirectories', () {
     test('默认继续使用系统应用支持目录，保持现有用户数据位置不变', () {
       final support = Directory(
