@@ -22,6 +22,7 @@ void main() {
     final dir = resolveDataDir(
       env: {'APPDATA': r'C:\Users\小明\AppData\Roaming'},
       operatingSystem: 'windows',
+      windowsStorageValue: (_) => null,
     );
     expect(
       dir.path,
@@ -57,7 +58,11 @@ void main() {
 
   test('读不到 HOME 时明确失败，而不是拼出一个错的路径', () {
     expect(
-      () => resolveDataDir(env: const {}, operatingSystem: 'windows'),
+      () => resolveDataDir(
+        env: const {},
+        operatingSystem: 'windows',
+        windowsStorageValue: (_) => null,
+      ),
       throwsA(isA<StateError>()),
     );
   });
