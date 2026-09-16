@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../presentation/user_facing_exception.dart';
 import 'media_tools_locator.dart';
 
 /// 子进程执行抽象（生产用 [systemProcessRunner]，测试注入假实现）
@@ -146,7 +147,8 @@ class ResolvingProcessRunner {
 
 /// 视频处理组件缺失：与其他 ffmpeg 失败区分开，因为它的 [message] 已经是
 /// 可直接展示给用户的安装引导，上层无需再翻译。
-class MediaToolMissingException implements FfmpegException {
+class MediaToolMissingException
+    implements FfmpegException, UserFacingException {
   final String executable;
   final String? operatingSystem;
 

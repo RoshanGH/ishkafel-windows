@@ -7,6 +7,7 @@ import '../export/export_commands.dart';
 import '../export/export_spec.dart';
 import '../export/unique_export_path.dart';
 import '../ffmpeg/process_runner.dart';
+import '../presentation/user_facing_exception.dart';
 import '../subtitle/subtitle_overlay.dart';
 import '../subtitle/subtitle_rasterizer.dart';
 import 'skipped_lines_summary.dart';
@@ -16,7 +17,8 @@ import 'shot_coverage.dart';
 import 'shot_allocation.dart';
 
 /// 导出失败：message 面向用户，点名到行/镜头
-class ScriptExportException implements Exception {
+class ScriptExportException implements UserFacingException {
+  @override
   final String message;
   final Object? cause;
   const ScriptExportException(this.message, {this.cause});

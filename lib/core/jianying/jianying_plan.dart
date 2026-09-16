@@ -1,3 +1,4 @@
+import '../presentation/user_facing_exception.dart';
 import '../script/script_doc.dart';
 import '../script/skipped_lines_summary.dart';
 import '../script/shot_coverage.dart';
@@ -15,7 +16,8 @@ import '../script/shot_coverage.dart';
 /// [ScriptDoc] 的镜头直接构造：原始素材 + 框选起点 + 倍率，三样都留给用户。
 
 /// 数据不对就抛它，绝不自己代偿。消息是给人看的，必须点名到行和镜。
-class JianyingPlanException implements Exception {
+class JianyingPlanException implements UserFacingException {
+  @override
   final String message;
   const JianyingPlanException(this.message);
   @override

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/core/presentation/user_facing_error.dart';
+import 'package:ishkafel/core/presentation/user_facing_exception.dart';
 
 class _ChineseException implements Exception {
   final String message;
@@ -9,12 +10,18 @@ class _ChineseException implements Exception {
   String toString() => '_ChineseException: $message';
 }
 
+class _TrustedChineseException implements UserFacingException {
+  @override
+  final String message;
+  const _TrustedChineseException(this.message);
+}
+
 void main() {
   group('userFacingError', () {
     test('保留可操作的中文消息但不暴露异常类名', () {
       expect(
         userFacingError(
-          const _ChineseException('素材库未登录，请先完成登录'),
+          const _TrustedChineseException('素材库未登录，请先完成登录'),
           fallback: '操作失败，请稍后重试',
         ),
         '素材库未登录，请先完成登录',
@@ -33,7 +40,7 @@ void main() {
 
     test('去除换行并限制过长消息', () {
       final text = userFacingError(
-        _ChineseException('失败\n${'细节' * 200}'),
+        _TrustedChineseException('失败\n${'细节' * 200}'),
         fallback: '操作失败',
       );
       expect(text, isNot(contains('\n')));
@@ -54,6 +61,20 @@ void main() {
       expect(text, isNot(contains('secret-value')));
       expect(text, isNot(contains('example.test')));
       expect(text, isNot(contains(r'C:\Users')));
+    });
+
+    test('未知中文异常一律兜底，即使敏感值没有标准字段名', () {
+      for (final error in <Object>[
+        const _ChineseException('请求失败，访问密钥 sk-live-xxx'),
+        const _ChineseException(
+          '请求失败 eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature',
+        ),
+      ]) {
+        expect(
+          userFacingError(error, fallback: '操作失败，请稍后重试'),
+          '操作失败，请稍后重试',
+        );
+      }
     });
   });
 }

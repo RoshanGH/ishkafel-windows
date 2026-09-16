@@ -1,3 +1,5 @@
+import 'user_facing_exception.dart';
+
 /// Convert an unexpected exception into text that is safe to show in the UI.
 ///
 /// Raw exception class names, stack details, and English library errors belong
@@ -8,15 +10,14 @@ String userFacingError(
   required String fallback,
   int maxLength = 220,
 }) {
-  String raw;
-  try {
-    final message = (error as dynamic).message;
-    raw = message is String ? message : error.toString();
-  } catch (_) {
-    raw = error.toString();
+  // Raw text from an unknown exception is not a UI contract. It can contain
+  // credentials, signed URLs, local paths, server bodies, or stack details
+  // without any recognizable label, so unknown types always use the fallback.
+  if (error is! UserFacingException) {
+    return fallback;
   }
 
-  var text = raw
+  var text = error.message
       .replaceFirst(RegExp(r'^[A-Za-z_$][\w.$<>]*Exception\s*:\s*'), '')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
