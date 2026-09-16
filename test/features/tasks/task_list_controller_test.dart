@@ -20,6 +20,8 @@ import 'package:ishkafel/core/models/renew_task.dart';
 import 'package:ishkafel/core/models/tag_group_ref.dart';
 import 'package:ishkafel/core/models/semantic_unit.dart';
 import 'package:ishkafel/core/models/shot.dart';
+import 'package:ishkafel/core/replacement/picked_material.dart';
+import 'package:ishkafel/core/replacement/replacement_plan.dart';
 import 'package:ishkafel/core/storage/task_repository.dart';
 import 'package:ishkafel/features/import_flow/import_service.dart';
 import 'package:ishkafel/features/tasks/analysis_error_message.dart';
@@ -162,6 +164,24 @@ class _CountingRepository extends InMemoryTaskRepository {
   }
 }
 
+/// 挂起启用后的第一次保存，让第二个编辑动作有机会并发到达。
+/// 真实文件仓库在 Windows 上正是在这段重叠里争抢 rename。
+class _FirstSaveGatedRepository extends InMemoryTaskRepository {
+  final firstSaveStarted = Completer<void>();
+  final releaseFirstSave = Completer<void>();
+  bool gateNextSave = false;
+  int gatedSaveCount = 0;
+
+  @override
+  Future<void> save(RenewTask task) async {
+    if (gateNextSave && gatedSaveCount++ == 0) {
+      firstSaveStarted.complete();
+      await releaseFirstSave.future;
+    }
+    await super.save(task);
+  }
+}
+
 RenewTask makeExternalTask(String id, String name, DateTime updatedAt) =>
     RenewTask(
       id: id,
@@ -260,6 +280,53 @@ void main() {
 
     final tasks = container.read(taskListProvider).value!;
     expect(tasks.map((t) => t.id), contains('ext'));
+  });
+
+  test('并发保存替换方案与已选素材会在最新任务上合并，不互相覆盖', () async {
+    final concurrentRepo = _FirstSaveGatedRepository();
+    const unit = SemanticUnit(
+      index: 0,
+      startMs: 0,
+      endMs: 1000,
+      transcript: '第一句',
+      shots: [Shot(startMs: 0, endMs: 1000)],
+    );
+    final task = RenewTask(
+      id: 'concurrent-edit',
+      name: '并发编辑',
+      sourcePath: '/v/concurrent-edit.mp4',
+      status: RenewTaskStatus.ready,
+      createdAt: DateTime.utc(2026, 9, 16),
+      updatedAt: DateTime.utc(2026, 9, 16),
+      units: const [unit],
+    );
+    await concurrentRepo.save(task);
+    final concurrentContainer = ProviderContainer(overrides: [
+      taskRepositoryProvider.overrideWithValue(concurrentRepo),
+      importServiceProvider.overrideWithValue(importService),
+    ]);
+    addTearDown(concurrentContainer.dispose);
+    await concurrentContainer.read(taskListProvider.future);
+    concurrentRepo.gateNextSave = true;
+
+    final controller = concurrentContainer.read(taskListProvider.notifier);
+    final savePlan = controller.savePickingPlan(
+      task,
+      [UnitReplacement.perShot(const {0: [101]})],
+    );
+    await concurrentRepo.firstSaveStarted.future;
+    final saveMaterials = controller.savePickedMaterials(
+      task,
+      const [PickedMaterial(id: 101, name: '候选素材')],
+    );
+    await Future<void>.delayed(Duration.zero);
+    concurrentRepo.releaseFirstSave.complete();
+    await Future.wait([savePlan, saveMaterials]);
+
+    final saved = (await concurrentRepo.findById(task.id))!;
+    expect(saved.replacementsByUid[unit.uid]!.shotCandidateIds[0], [101]);
+    expect(saved.pickedMaterials,
+        const [PickedMaterial(id: 101, name: '候选素材')]);
   });
 
   test('importFile 后自动触发分析并刷新为 awaitingCut', () async {

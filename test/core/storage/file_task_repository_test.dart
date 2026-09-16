@@ -119,6 +119,27 @@ void main() {
     expect((await repo.findAll()).length, 1);
   });
 
+  test('并发保存同一任务不争抢 Windows rename 且最后一次调用获胜', () async {
+    final initial = makeHeavyTask('concurrent-save');
+    await repo.save(initial);
+
+    final writes = [
+      for (var i = 0; i < 64; i++)
+        repo.save(initial.copyWith(
+          name: '版本$i',
+          updatedAt: initial.updatedAt.add(Duration(milliseconds: i)),
+        )),
+    ];
+    await Future.wait(writes);
+
+    expect((await repo.findById(initial.id))!.name, '版本63');
+    final leakedTemps = await Directory('${tempDir.path}/tasks')
+        .list()
+        .where((entity) => entity.path.endsWith('.tmp'))
+        .toList();
+    expect(leakedTemps, isEmpty);
+  });
+
   test('delete 后不可见且不抛错', () async {
     await repo.save(makeTask('a', DateTime.utc(2026, 7, 29)));
     await repo.delete('a');

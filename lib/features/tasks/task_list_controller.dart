@@ -194,6 +194,11 @@ class TaskListController extends AsyncNotifier<List<RenewTask>> {
   /// 后续新建的任务；每条只占一个短字符串，一次会话内的删除量级可忽略。
   final Set<String> _deletedTaskIds = {};
 
+  /// 同一任务的字段级编辑必须依调用顺序串行，并且每一次都以磁盘上的最新记录
+  /// 为基线。否则「替换方案」与「已选素材」几乎同时保存时，即使文件层已经
+  /// 串行，后到的旧快照仍会把先写入的字段整块覆盖掉。
+  final Map<String, Future<void>> _mutationTails = {};
+
   /// 删除任务：先清理中间产物（失败不阻断），再删记录并从列表中移除那一条
   Future<void> deleteTask(RenewTask task) async {
     // 墓碑要在任何 await 之前立起来：清理与删记录都是异步的，期间到达的
@@ -282,6 +287,38 @@ class TaskListController extends AsyncNotifier<List<RenewTask>> {
       return null;
     }
     return current;
+  }
+
+  Future<void> _mutateTask(
+    RenewTask task, {
+    required String action,
+    required RenewTask Function(RenewTask current) transform,
+  }) {
+    final result = Completer<void>();
+    final previous = _mutationTails[task.id] ?? Future<void>.value();
+    late final Future<void> currentMutation;
+    currentMutation = previous.then((_) async {
+      try {
+        final current = await _currentRecord(task, action: action);
+        if (current == null) {
+          result.complete();
+          return;
+        }
+        final updated = transform(current).copyWith(updatedAt: DateTime.now());
+        await ref.read(taskRepositoryProvider).save(updated);
+        await _refreshAfterSave(updated);
+        result.complete();
+      } catch (error, stackTrace) {
+        result.completeError(error, stackTrace);
+      }
+    });
+    _mutationTails[task.id] = currentMutation;
+    unawaited(currentMutation.whenComplete(() {
+      if (identical(_mutationTails[task.id], currentMutation)) {
+        _mutationTails.remove(task.id);
+      }
+    }));
+    return result.future;
   }
 
   /// 全量重新装载。
@@ -547,38 +584,41 @@ class TaskListController extends AsyncNotifier<List<RenewTask>> {
   /// [replacements] 按位置排（界面就是这么摆的），落库时翻译成
   /// 「哪个单元的身份 → 哪份方案」
   Future<void> savePickingPlan(
-      RenewTask task, List<UnitReplacement> replacements) async {
-    final units = task.units ?? const <SemanticUnit>[];
-    final updated = task.copyWith(
-      replacementsByUid: RenewTask.byUid(units, replacements),
-      updatedAt: DateTime.now(),
+      RenewTask task, List<UnitReplacement> replacements) {
+    return _mutateTask(
+      task,
+      action: '保存替换方案',
+      transform: (current) => current.copyWith(
+        replacementsByUid: RenewTask.byUid(
+          current.units ?? const <SemanticUnit>[],
+          replacements,
+        ),
+      ),
     );
-    await ref.read(taskRepositoryProvider).save(updated);
-    await _refreshAfterSave(updated);
   }
 
   /// 记下一次导出。**追加**而不是覆盖：项目会被反复导出，每一次都是一条
   /// 独立的记录（哪天、导了几条、成了几条、在哪个目录）
-  Future<void> addExportRecord(RenewTask task, ExportRecord record) async {
-    final updated = task.copyWith(
-      exports: [...task.exports, record],
-      updatedAt: DateTime.now(),
+  Future<void> addExportRecord(RenewTask task, ExportRecord record) {
+    return _mutateTask(
+      task,
+      action: '保存导出记录',
+      transform: (current) => current.copyWith(
+        exports: [...current.exports, record],
+      ),
     );
-    await ref.read(taskRepositoryProvider).save(updated);
-    await _refreshAfterSave(updated);
   }
 
   /// 已挑中素材的落地记录。和替换方案分开存：方案是「选了哪些 id」，
   /// 这里是「那些 id 到底是什么」——后者是为了让用户随时看得见自己选了什么，
   /// 和检索结果、翻到第几页、换没换项目组都无关。
   Future<void> savePickedMaterials(
-      RenewTask task, List<PickedMaterial> materials) async {
-    final updated = task.copyWith(
-      pickedMaterials: materials,
-      updatedAt: DateTime.now(),
+      RenewTask task, List<PickedMaterial> materials) {
+    return _mutateTask(
+      task,
+      action: '保存已选素材',
+      transform: (current) => current.copyWith(pickedMaterials: materials),
     );
-    await ref.read(taskRepositoryProvider).save(updated);
-    await _refreshAfterSave(updated);
   }
 
   /// 改这条任务用哪些标签组。
@@ -586,17 +626,27 @@ class TaskListController extends AsyncNotifier<List<RenewTask>> {
   /// 标签组本来只在新建向导里选一次；选漏了或选错了就再也改不了，那条任务
   /// 从此打不出标签、候选检索的标签主路径也就永远用不上。
   /// 存「保留素材原声」的全片打底设置。传进来的 task 已经带上新值了
-  Future<void> saveMaterialAudio(RenewTask task) async {
-    final updated = task.copyWith(updatedAt: DateTime.now());
-    await ref.read(taskRepositoryProvider).save(updated);
-    await _refreshAfterSave(updated);
+  Future<void> saveMaterialAudio(RenewTask task) {
+    return _mutateTask(
+      task,
+      action: '保存声音设置',
+      transform: (current) => current.copyWith(
+        materialAudio: task.materialAudio,
+        sourceAudio: task.sourceAudio,
+      ),
+    );
   }
 
   /// 存手改过的字幕轨。传进来的 task 已经带上新值了
-  Future<void> saveSubtitleTrack(RenewTask task) async {
-    final updated = task.copyWith(updatedAt: DateTime.now());
-    await ref.read(taskRepositoryProvider).save(updated);
-    await _refreshAfterSave(updated);
+  Future<void> saveSubtitleTrack(RenewTask task) {
+    return _mutateTask(
+      task,
+      action: '保存字幕',
+      transform: (current) => current.copyWith(
+        subtitle: task.subtitle,
+        subtitleTrack: task.subtitleTrack,
+      ),
+    );
   }
 
   Future<void> saveTagGroups(
@@ -606,26 +656,29 @@ class TaskListController extends AsyncNotifier<List<RenewTask>> {
     String? unitPrompt,
     String? shotPrompt,
     ProjectRef? project,
-  }) async {
-    final updated = task.copyWith(
-      project: project,
-      // 显式选了「不限项目」时要真的清掉，不能被 ?? 当成「没传」
-      clearProject: project == null,
-      unitTagGroups: unit,
-      shotTagGroups: shot,
-      unitTagPrompt: unitPrompt,
-      shotTagPrompt: shotPrompt,
-      updatedAt: DateTime.now(),
+  }) {
+    return _mutateTask(
+      task,
+      action: '保存标签组',
+      transform: (current) => current.copyWith(
+        project: project,
+        // 显式选了「不限项目」时要真的清掉，不能被 ?? 当成「没传」
+        clearProject: project == null,
+        unitTagGroups: unit,
+        shotTagGroups: shot,
+        unitTagPrompt: unitPrompt,
+        shotTagPrompt: shotPrompt,
+      ),
     );
-    await ref.read(taskRepositoryProvider).save(updated);
-    await _refreshAfterSave(updated);
   }
 
   /// 保存配乐方案。与切分、替换方案同一条「随手落库」通路。
-  Future<void> saveBgm(RenewTask task, BgmPlan bgm) async {
-    final updated = task.copyWith(bgm: bgm, updatedAt: DateTime.now());
-    await ref.read(taskRepositoryProvider).save(updated);
-    await _refreshAfterSave(updated);
+  Future<void> saveBgm(RenewTask task, BgmPlan bgm) {
+    return _mutateTask(
+      task,
+      action: '保存配乐方案',
+      transform: (current) => current.copyWith(bgm: bgm),
+    );
   }
 
   /// 记下这条任务自己的人声轨。
@@ -633,21 +686,24 @@ class TaskListController extends AsyncNotifier<List<RenewTask>> {
   /// 人声轨**归任务所有**，两条任务之间不共用（见 [PreparedCache]）：它被
   /// 别人删任务时一起清掉、或当初那次分离失败过，用户都能在工作台点
   /// 「重新分离」补一份，补完就落在这里
-  Future<void> saveVocals(RenewTask task, SeparatedAudio stems) async {
-    final updated = task.copyWith(
-      vocalsPath: stems.vocalsPath,
-      backgroundPath: stems.backgroundPath,
-      updatedAt: DateTime.now(),
+  Future<void> saveVocals(RenewTask task, SeparatedAudio stems) {
+    return _mutateTask(
+      task,
+      action: '保存分离音轨',
+      transform: (current) => current.copyWith(
+        vocalsPath: stems.vocalsPath,
+        backgroundPath: stems.backgroundPath,
+      ),
     );
-    await ref.read(taskRepositoryProvider).save(updated);
-    await _refreshAfterSave(updated);
   }
 
   /// 保存换音色方案。与切分、替换方案、配乐同一条「随手落库」通路。
-  Future<void> saveVoices(RenewTask task, VoicePlan voices) async {
-    final updated = task.copyWith(voices: voices, updatedAt: DateTime.now());
-    await ref.read(taskRepositoryProvider).save(updated);
-    await _refreshAfterSave(updated);
+  Future<void> saveVoices(RenewTask task, VoicePlan voices) {
+    return _mutateTask(
+      task,
+      action: '保存换音色方案',
+      transform: (current) => current.copyWith(voices: voices),
+    );
   }
 
   /// 工作台落库：保存编辑后的 units。
@@ -655,10 +711,12 @@ class TaskListController extends AsyncNotifier<List<RenewTask>> {
   /// 工作台里的每次改动都直接落库（防抖 800ms），不需要用户点「保存」或
   /// 「确认」——他改完就该当作已经存下了。状态不变：editing 一直到导出。
   Future<void> saveSegmentationDraft(
-      RenewTask task, List<SemanticUnit> units) async {
-    final updated = task.copyWith(units: units, updatedAt: DateTime.now());
-    await ref.read(taskRepositoryProvider).save(updated);
-    await _refreshAfterSave(updated);
+      RenewTask task, List<SemanticUnit> units) {
+    return _mutateTask(
+      task,
+      action: '保存切分草稿',
+      transform: (current) => current.copyWith(units: units),
+    );
   }
 }
 
@@ -672,4 +730,3 @@ final taskListProvider =
 /// null 表示照常进列表页。用完即弃：打开过一次就不该再自动跳，否则用户
 /// 返回列表会被立刻弹回去
 final initialTaskIdProvider = Provider<String?>((ref) => null);
-

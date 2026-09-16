@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -74,6 +75,10 @@ class FileTaskRepository implements TaskRepository, TaskLoadDiagnostics {
 
   int _skippedTaskFileCount = 0;
 
+  /// Windows 不允许两个 rename 同时替换同一个目标文件。把同一任务的写入串行化，
+  /// 不同任务仍可并行落盘；队列按 save 调用顺序执行，因此最后一次调用获胜。
+  final Map<String, Future<void>> _saveTails = {};
+
   FileTaskRepository(this.rootDir);
 
   /// 仅反映最近一次 findAll 的结果（每次装载重新计数）
@@ -130,14 +135,34 @@ class FileTaskRepository implements TaskRepository, TaskLoadDiagnostics {
   }
 
   @override
-  Future<void> save(RenewTask task) async {
+  Future<void> save(RenewTask task) {
+    final previous = _saveTails[task.id] ?? Future<void>.value();
+    late final Future<void> current;
+    current = previous
+        .catchError((Object _) {})
+        .then((_) => _saveNow(task));
+    _saveTails[task.id] = current;
+
+    return current.whenComplete(() {
+      if (identical(_saveTails[task.id], current)) {
+        _saveTails.remove(task.id);
+      }
+    });
+  }
+
+  Future<void> _saveNow(RenewTask task) async {
     await _tasksDir.create(recursive: true);
     final target = _fileOf(task.id);
     // 原子写入：先写临时文件，再 rename 覆盖目标，避免写到一半被读到半截内容
     final tmp = File(
         '${target.path}.${DateTime.now().microsecondsSinceEpoch}.tmp');
-    await tmp.writeAsString(jsonEncode(task.toJson()));
-    await tmp.rename(target.path);
+    try {
+      await tmp.writeAsString(jsonEncode(task.toJson()));
+      await tmp.rename(target.path);
+    } finally {
+      // rename 失败时不把完整任务副本遗留在数据目录；同时保留原始目标文件。
+      if (await tmp.exists()) await tmp.delete();
+    }
   }
 
   @override

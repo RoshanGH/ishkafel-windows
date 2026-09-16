@@ -81,6 +81,9 @@ void main() {
   group('落库失败必须让用户看得见（否则表现为「按钮点了没反应」）', () {
     testWidgets('自动落库失败时给出可见提示，不让用户以为改动已经留住', (tester) async {
       final repo = _FailingRepo();
+      repo.failSave = false;
+      await repo.save(_task());
+      repo.failSave = true;
       await tester.pumpWidget(ProviderScope(
         overrides: [taskRepositoryProvider.overrideWithValue(repo)],
         child: MaterialApp(
