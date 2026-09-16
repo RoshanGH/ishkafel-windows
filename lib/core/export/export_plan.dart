@@ -50,6 +50,14 @@ class ExportSegment {
 
   /// 这一段落在底片的第几毫秒（配合 [baseCandidateId] 用）。
   /// 不给就是 [startMs]——底片是原片时两者本来就相同
+  /// **这个单元的底片是哪条素材**——和 [baseCandidateId] 不是一回事。
+  ///
+  /// 后者说的是「这一段画面从哪儿剪」，换过素材的那一镜就是 null；而字幕
+  /// 要看的是**这个单元**有没有底片：那一镜替代的正是底片的这一段，台词
+  /// 该从底片的转写里取。拿前者当判据的话，换过素材的镜头一律取不到字幕
+  /// （2026-09-15 真机导出一条才发现：预览里有字、导出来没有）
+  final int? unitBaseCandidateId;
+
   /// 不给就是 [startMs]——用 [baseStartMs] 读，别直接读这个
   final int? baseStartMsOrNull;
 
@@ -65,6 +73,7 @@ class ExportSegment {
     this.composedMs,
     this.trimStartMs,
     this.baseCandidateId,
+    this.unitBaseCandidateId,
     int? baseStartMs,
   }) : baseStartMsOrNull = baseStartMs;
 
@@ -88,11 +97,13 @@ class ExportSegment {
       // 底片换了就是另一段画面：不比这一项，换底片重导会命中上一张底片
       // 留下的切片缓存，人看到的是「改了没反应」
       other.baseCandidateId == baseCandidateId &&
+      other.unitBaseCandidateId == unitBaseCandidateId &&
       other.baseStartMs == baseStartMs;
 
   @override
   int get hashCode => Object.hash(startMs, endMs, candidateId, unitIndex,
-      shotIndex, composedMs, baseCandidateId, baseStartMs);
+      shotIndex, composedMs, baseCandidateId, unitBaseCandidateId,
+      baseStartMs);
 
   @override
   String toString() => 'ExportSegment(U${unitIndex + 1}'
@@ -505,6 +516,7 @@ class ExportPlanner {
         unitUid: unit.uid,
         shotIndex: shotIndex,
         baseCandidateId: unit.baseCandidateId,
+        unitBaseCandidateId: unit.baseCandidateId,
         baseStartMs: unit.baseCandidateId == null
             ? shot.startMs
             : shot.startMs - unit.startMs,
@@ -527,6 +539,12 @@ class ExportPlanner {
       // 起点 0 就不写：写成 0 和不写是同一件事，而 null 让下游的命令里
       // 干脆不出现 -ss
       trimStartMs: materialMs > 0 && cut.startMs > 0 ? cut.startMs : null,
+      // 换过素材的这一镜替代的正是底片的这一段——字幕从底片的转写里取，
+      // 坑位也是素材内偏移（画面用的 baseCandidateId 这里当然是 null）
+      unitBaseCandidateId: unit.baseCandidateId,
+      baseStartMs: unit.baseCandidateId == null
+          ? null
+          : shot.startMs - unit.startMs,
     );
   }
 }

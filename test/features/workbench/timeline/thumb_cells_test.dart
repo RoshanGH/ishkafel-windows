@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/core/models/semantic_unit.dart';
+import 'package:ishkafel/core/models/shot.dart';
 import 'package:ishkafel/features/workbench/timeline/thumbs_span.dart';
 
 /// **胶片条按单元分段放，不再拿原片时刻直接换算像素。**
@@ -73,5 +74,27 @@ void main() {
 
   test('格数为 0 时不画', () {
     expect(thumbCells(units: units(), count: 0, pxOfUnit: px), isEmpty);
+  });
+
+  test('固定过底片的那一段不铺原片缩略图——画面已经换成另一条素材了', () {
+    // 真机（拼片任务 U1）：hasSource 为真、同时固定了底片。只判 hasSource
+    // 的话，原片同一个时间点的缩略图会铺到一段毫不相干的画面上，
+    // 而底片自己的缩略图也在那儿画——两份画面叠着
+    final pinned = [
+      units()[0],
+      // U2 取自原片 0~10s，现在固定了底片、切成两镜
+      units()[1].copyWith(baseCandidateId: 114799, shots: const [
+        Shot(startMs: 0, endMs: 5000),
+        Shot(startMs: 5000, endMs: 10000),
+      ]),
+      units()[2],
+    ];
+    final cells = thumbCells(units: pinned, count: 4, pxOfUnit: px);
+
+    expect(cells.where((c) => c.imageIndex == 0), isEmpty,
+        reason: '第 0 格是原片 0~5s，落在 U2 身上——它已经换底片了');
+    expect(cells.where((c) => c.imageIndex == 1), isEmpty);
+    expect(cells.where((c) => c.imageIndex == 2), isNotEmpty,
+        reason: 'U3 没动，照旧铺');
   });
 }

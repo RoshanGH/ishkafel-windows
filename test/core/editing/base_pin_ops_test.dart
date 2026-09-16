@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ishkafel/core/analysis/providers.dart' show AsrSentence;
 import 'package:ishkafel/core/editing/base_pin_ops.dart';
 import 'package:ishkafel/core/models/semantic_unit.dart';
 import 'package:ishkafel/core/models/shot.dart';
@@ -231,6 +232,63 @@ void main() {
         const NoBase(),
         reason: '清掉之后这一段没挑素材了，要重新挑',
       );
+    });
+  });
+
+  group('转写出来的台词要落进单元', () {
+    const said = [
+      AsrSentence(startMs: 40, endMs: 3320, text: '如果你以为它只能灭火李斯特菌，', words: []),
+      AsrSentence(startMs: 3360, endMs: 8400, text: '那你就错了。', words: []),
+    ];
+
+    test('左栏、时间线、台词框读的都是它——不写就是三处空白', () {
+      final (units, _) = BasePinOps.pin(
+        [_inserted()],
+        [UnitReplacement.whole([7])],
+        0,
+        candidateId: 7,
+        shots: _cut(),
+        sentences: said,
+      );
+
+      expect(units[0].transcript, '如果你以为它只能灭火李斯特菌，那你就错了。');
+    });
+
+    test('人自己填过的不覆盖——模型那份只是个起点', () {
+      final mine = _inserted().copyWith(transcript: '我自己写的台词');
+      final (units, _) = BasePinOps.pin(
+        [mine],
+        [UnitReplacement.whole([7])],
+        0,
+        candidateId: 7,
+        shots: _cut(),
+        sentences: said,
+      );
+
+      expect(units[0].transcript, '我自己写的台词');
+    });
+
+    test('没转出话来：台词还是空的，不硬凑', () {
+      final (units, _) = BasePinOps.pin(
+        [_inserted()],
+        [UnitReplacement.whole([7])],
+        0,
+        candidateId: 7,
+        shots: _cut(),
+        sentences: const [],
+      );
+
+      expect(units[0].transcript, isEmpty);
+    });
+
+    test('换底片时台词跟着清——它是从那张底片转出来的', () {
+      final pinned = _inserted().copyWith(
+          baseCandidateId: 7, shots: _cut(), transcript: '底片转出来的话');
+      final (units, _) = BasePinOps.unpin(
+          [pinned], [UnitReplacement.whole([7])], 0);
+
+      expect(units[0].transcript, isEmpty);
+      expect(units[0].baseSentences, isNull);
     });
   });
 }

@@ -8,6 +8,7 @@ import '../core/models/semantic_unit.dart';
 import '../core/replacement/picked_material.dart';
 import '../core/miaoa/miaoa_content_service.dart';
 import '../core/replacement/replacement_plan.dart';
+import '../core/replacement/unit_base.dart';
 
 /// Agent 提交的一条**完整方案**：每个单元用什么，一次说清。
 ///
@@ -252,7 +253,9 @@ ExportCombination toCombination(SubmittedPlan plan, List<SemanticUnit> units,
       ));
       continue;
     }
-    if (chosen.mode == 'whole') {
+    // 底片固定过的单元：整段替换这一档已经由底片接管，照旧逐镜产段
+    // （规则与 `ExportPlanner._segmentsFor` 同源，见 [hasOwnBaseShots]）
+    if (chosen.mode == 'whole' && !hasOwnBaseShots(unit)) {
       segments.add(ExportSegment(
         unitIndex: unit.index,
         unitUid: unit.uid,
@@ -279,6 +282,14 @@ ExportCombination toCombination(SubmittedPlan plan, List<SemanticUnit> units,
         endMs: shot.endMs,
         candidateId: id,
         trimStartMs: materialMs > 0 && cut.startMs > 0 ? cut.startMs : null,
+        // **没换素材的那一镜从这个单元的底片上剪**。不带这两项，导出会
+        // 跑去原片同一个时间点剪（拼片任务干脆判成「还没挑素材」导不出去）
+        baseCandidateId: id == null ? unit.baseCandidateId : null,
+        // 单元级的那份字幕要用：换过素材的这一镜替代的正是底片的这一段
+        unitBaseCandidateId: unit.baseCandidateId,
+        baseStartMs: unit.baseCandidateId == null
+            ? null
+            : shot.startMs - unit.startMs,
       ));
     }
   }

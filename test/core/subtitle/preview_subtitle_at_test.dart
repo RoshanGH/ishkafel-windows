@@ -166,4 +166,62 @@ void main() {
       expect(text, isNull);
     });
   });
+
+  group('固定过底片的单元：画面不是原片了，但它有自己的镜头', () {
+    /// 手加的单元，选了一条素材当底片，切成两镜；第一镜换了素材。
+    /// 转写记在 baseSentences 上，时间戳是**素材内**毫秒
+    List<SemanticUnit> baseUnits() => [
+          const SemanticUnit(
+            index: 0,
+            uid: 'cccccccccccc',
+            startMs: 0,
+            endMs: 4000,
+            transcript: '如果你以为它只能灭火',
+            hasSource: false,
+            baseCandidateId: 105678,
+            baseSentences: [
+              AsrSentence(
+                  startMs: 40,
+                  endMs: 1500,
+                  text: '如果你以为它只能灭火',
+                  words: <AsrWord>[]),
+            ],
+            shots: [
+              Shot(startMs: 0, endMs: 2000),
+              Shot(startMs: 2000, endMs: 4000),
+            ],
+          ),
+        ];
+
+    String? at(int composedMs) => previewSubtitleAt(
+          composedMs: composedMs,
+          timeline:
+              ComposedTimeline.of(units: baseUnits(), wholeDurations: const {}),
+          replacements: [
+            UnitReplacement.perShot({
+              0: [116719]
+            }, previewIds: {
+              0: 116719
+            }),
+          ],
+          track: const SubtitleTrack.empty(),
+          sentences: const [],
+        );
+
+    test('换过素材的那一镜照样出字——底片不等于「整段替换」', () {
+      // isReplaced 对它也为真（画面确实不是原片了），拿它当判据的话
+      // 整个单元在这儿被跳过：时间线的字幕轨照画，预览画面上一个字都没有
+      expect(at(800), '如果你以为它只能灭火',
+          reason: '它有自己的镜头切分，每一镜都能单独换素材、都该出字幕');
+    });
+
+    test('字从底片自己的转写里取，原片那份一个字都不用', () {
+      // sentences 传的是空的：真出了字，就只能来自 baseSentences
+      expect(at(1600), isNull, reason: '1.6s 已经过了那一句（40~1500）');
+    });
+
+    test('没换素材的那一镜不叠——字幕烧在原素材的像素里', () {
+      expect(at(2500), isNull);
+    });
+  });
 }

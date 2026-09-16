@@ -67,6 +67,10 @@ class TimelineView extends StatefulWidget {
   /// 画面轨 / 音频轨各自的状态（两条轨会各坏各的）
   final TimelineMediaStatus? thumbStatus;
   final TimelineMediaStatus? waveStatus;
+
+  /// 底片固定过的单元各自的画面与波形（单元 uid → 那条素材的）。
+  /// 那几段的画面来自素材，原片那份缩略图里根本没有它们
+  final Map<String, TimelineMedia> baseMedia;
   final ValueChanged<int> onSeek;
   final ValueChanged<TimelineGeometry> onGeometryChanged;
 
@@ -164,6 +168,7 @@ class TimelineView extends StatefulWidget {
     this.mediaStatus = TimelineMediaStatus.ready,
     this.thumbStatus,
     this.waveStatus,
+    this.baseMedia = const {},
     required this.onSeek,
     required this.onGeometryChanged,
     this.onScrubStart,
@@ -235,6 +240,7 @@ class _TimelineViewState extends State<TimelineView> {
   void initState() {
     super.initState();
     _decodeThumbs(widget.media);
+    _decodeBaseThumbs(widget.baseMedia);
     widget.playhead.addListener(_followPlayhead);
   }
 
@@ -243,6 +249,10 @@ class _TimelineViewState extends State<TimelineView> {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.media, widget.media)) {
       _decodeThumbs(widget.media);
+    }
+    // 底片那几份是按 uid 存的 map；上游每次换新实例，这里比引用就够
+    if (!identical(oldWidget.baseMedia, widget.baseMedia)) {
+      _decodeBaseThumbs(widget.baseMedia);
     }
     if (!identical(oldWidget.playhead, widget.playhead)) {
       oldWidget.playhead.removeListener(_followPlayhead);
@@ -319,6 +329,52 @@ class _TimelineViewState extends State<TimelineView> {
   /// 解码结果**按下标对齐**：某一张缺失或解码失败时保留 null 占位，绝不
   /// 压缩列表——压缩会让剩余各张被按新长度重新等分铺开，整条胶片条与
   /// 时间轴错位（见 [TimelineMedia.thumbPaths] 的说明）。
+  /// 底片单元解码好的图（单元 uid → 每一格）
+  Map<String, List<ui.Image?>> _baseThumbImages = const {};
+
+  /// 底片那几份自己的取消令牌。**不能和原片那份共用**：两个解码前后脚
+  /// 启动时，后启动的会把先启动的结果判成过期丢掉
+  int _baseDecodeRequestId = 0;
+
+  /// 给每个底片单元解一份图。
+  ///
+  /// 和原片那份分开存：它们各按各的素材抽帧，格数和内容都不一样，
+  /// 混在一起就是把别人的画面画到这一格上
+  Future<void> _decodeBaseThumbs(Map<String, TimelineMedia> baseMedia) async {
+    final requestId = ++_baseDecodeRequestId;
+    final out = <String, List<ui.Image?>>{};
+    for (final entry in baseMedia.entries) {
+      final paths = entry.value.thumbPaths;
+      final decoded = List<ui.Image?>.filled(paths.length, null);
+      for (var i = 0; i < paths.length; i++) {
+        final path = paths[i];
+        if (path == null) continue;
+        final file = File(path);
+        if (!await file.exists()) continue;
+        try {
+          final codec = await ui.instantiateImageCodec(
+              await file.readAsBytes(),
+              targetHeight: _thumbDecodeHeight);
+          decoded[i] = (await codec.getNextFrame()).image;
+        } catch (e) {
+          AppLog.warn('底片缩略图解码失败：$path，$e');
+        }
+      }
+      out[entry.key] = decoded;
+    }
+    if (!mounted || requestId != _baseDecodeRequestId) {
+      for (final imgs in out.values) {
+        _disposeThumbImages(imgs);
+      }
+      return;
+    }
+    final previous = _baseThumbImages;
+    setState(() => _baseThumbImages = out);
+    for (final imgs in previous.values) {
+      _disposeThumbImages(imgs);
+    }
+  }
+
   Future<void> _decodeThumbs(TimelineMedia? media) async {
     final requestId = ++_decodeRequestId;
     final paths = media?.thumbPaths ?? const <String?>[];
@@ -878,6 +934,11 @@ class _TimelineViewState extends State<TimelineView> {
                     geometry: widget.geometry,
                     thumbImages: _thumbImages,
                     waveEnvelope: widget.media?.waveEnvelope,
+                    baseThumbImages: _baseThumbImages,
+                    baseWaveEnvelopes: {
+                      for (final e in widget.baseMedia.entries)
+                        e.key: e.value.waveEnvelope,
+                    },
                     playheadMs: playheadMs,
                     mediaStatus: widget.mediaStatus,
                     thumbStatus: widget.thumbStatus,

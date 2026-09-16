@@ -22,6 +22,7 @@ import '../../core/storage/task_seq.dart';
 import '../import_flow/import_service.dart';
 import 'analysis_error_message.dart';
 import 'analysis_progress_store.dart';
+import '../../core/analysis/base_transcriber.dart';
 import '../../core/analysis/unit_segmenter.dart';
 import 'task_artifact_cleaner.dart';
 import 'task_list_merge.dart';
@@ -47,6 +48,15 @@ final unitSegmenterProvider = Provider<UnitSegmenter?>((ref) {
   if (pipeline == null) return null;
   return UnitSegmenter(
       scenes: pipeline.scenes, boundaries: pipeline.shotBoundaries);
+});
+
+/// 底片转写器：给切开的那一段拿到它自己的词级时间戳——字幕这条线从头到尾
+/// 建立在词级时间戳上，拿别的凑不出来。null 表示凭据未配置
+final baseTranscriberProvider = Provider<BaseTranscriber?>((ref) {
+  final pipeline = ref.watch(analysisPipelineProvider);
+  if (pipeline == null) return null;
+  return BaseTranscriber(
+      audio: pipeline.audio, asr: pipeline.asr, workDir: pipeline.workDir);
 });
 
 /// 任务中间产物清理器：null 表示未接线（测试场景），删除任务时只删记录

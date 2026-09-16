@@ -24,14 +24,33 @@ List<SubtitleLine> subtitleLinesForSlot({
   /// 这一镜的底片是**挑来的素材**，不是原片
   /// （见 `docs/superpowers/specs/2026-09-14-底片-design.md`）。
   ///
-  /// 那时 ASR 那份现算的**一个字都不能用**：时间戳量的是原片，画面却换成了
-  /// 另一条片子，取出来的台词跟画面毫不相干——而它会被结结实实烧进成片。
-  /// 手改过的照样认（人自己排的时间，他知道自己在干什么）。
+  /// 那时 [sentences]（原片那份 ASR）**一个字都不能用**：时间戳量的是原片，
+  /// 画面却换成了另一条片子，取出来的台词跟画面毫不相干——而它会被结结实实
+  /// 烧进成片。要字幕就得用底片自己的转写，见 [baseSentences]。
   bool onMaterialBase = false,
+
+  /// 底片素材自己的转写（[SemanticUnit.baseSentences]，时间戳是**素材内**
+  /// 毫秒）。只在 [onMaterialBase] 为真时用得上。
+  ///
+  /// null = 还没转写过，那就没有字幕可取（不硬凑）；空列表 = 转过、
+  /// 这条素材没人说话
+  List<AsrSentence>? baseSentences,
+
+  /// 这一镜落在**底片内**的第几毫秒到第几毫秒（配合 [baseSentences] 取词）
+  int? baseSlotStartMs,
+  int? baseSlotEndMs,
 }) =>
     track.linesOf(SubtitleSlot(unitUid: unitUid, shotIndex: shotIndex)) ??
     (onMaterialBase
-        ? const []
+        ? (baseSentences == null ||
+                baseSlotStartMs == null ||
+                baseSlotEndMs == null
+            ? const []
+            : subtitleLinesInSlot(
+                sentences: baseSentences,
+                slotStartMs: baseSlotStartMs,
+                slotEndMs: baseSlotEndMs,
+              ))
         : subtitleLinesInSlot(
             sentences: sentences,
             slotStartMs: slotStartMs,

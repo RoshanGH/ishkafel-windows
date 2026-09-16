@@ -3,6 +3,7 @@ import 'dart:io';
 import '../../core/audio/material_audio.dart';
 import '../../core/audio/source_audio.dart';
 import '../../app/service_wiring.dart';
+import '../../core/analysis/base_transcriber.dart';
 import '../../core/analysis/scene_detector.dart';
 import '../../core/analysis/unit_segmenter.dart';
 import '../../core/editing/base_pin_ops.dart';
@@ -118,7 +119,7 @@ Future<int> runUnitCommand({
 /// 播报只说人话——「正在挪单元顺序」，不是「runUnitCommand move」
 String _stageWord(String what) => switch (what) {
       'base' => '正在看这一段的底片',
-      'segment' => '正在切分这一段的底片',
+      'segment' => '正在切分这一段的底片（还会转写、打标）',
       'unpin' => '正在换这一段的底片',
       'add' => '正在加一个台词语义单元',
       'remove' => '正在删掉一个台词语义单元',
@@ -559,6 +560,13 @@ Future<int> _base(
     'pinned': pinnedId != null,
     'pinnedCandidateId': pinnedId,
     'shots': u.shots.length,
+    // 这一段的镜头打过标没有。**没打就别急着按标签/画面搜素材**——
+    // 检索键就是它们，一条都搜不出来时你会以为素材库里没有
+    'shotsTagged': u.shots.where((s) => s.tags.isNotEmpty).length,
+    // 底片转写出几句。字幕从这一份取；0 句（或没转过）就是这一段没字幕，
+    // 要的话用 `unit subtitle` 自己排
+    'baseSentenceCount': u.baseSentences?.length,
+    'transcript': u.transcript,
     'canSegment': blocked == null,
     'blockedReason': ?blocked,
     if (cost != null)
@@ -631,8 +639,40 @@ Future<int> _segment(FileTaskRepository repository, RenewTask task, int? unit,
     return exitEnv;
   }
 
-  final (nextUnits, nextPlans) =
-      BasePinOps.pin(units, plans, unit, candidateId: candidateId, shots: shots);
+  // **顺手把这条素材转写一遍**：字幕要的词级时间戳只能从这儿来，原片那份
+  // 量的是原片、跟这段画面对不上。转不出来不挡切分——那一段就是没字幕
+  final sentences = pipeline == null
+      ? null
+      : await BaseTranscriber(
+              audio: pipeline.audio,
+              asr: pipeline.asr,
+              workDir: pipeline.workDir)
+          .transcribe(videoPath: basePath, key: '${task.id}_u${u.uid}');
+
+  var (nextUnits, nextPlans) = BasePinOps.pin(units, plans, unit,
+      candidateId: candidateId, shots: shots, sentences: sentences);
+
+  // **切完接着打标**——界面上那条路是这么走的，这里少一步，Agent 切出来的
+  // 镜头就没有标签也没有画面描述，`candidates --shot` 按标签/画面一条都
+  // 搜不出来。两条路做出来的必须是同一份东西
+  final tagging = pipeline?.tagging;
+  if (tagging != null) {
+    try {
+      nextUnits = await tagging.tag(
+        task.copyWith(units: nextUnits),
+        nextUnits,
+        only: {unit},
+        // 抽帧要从**底片**上抽：跑去原片同一个时间点，打出来的标签张冠李戴
+        baseVideoPaths: {u.index: basePath},
+      );
+    } catch (e) {
+      // 打标失败不回滚切分——切分本身有价值，标签可以之后再打
+      // （单元上已经标了 tagsStale，重打标那条路会把它捡起来）
+      sink.writeln('切分好了，但打标没成：$e');
+      sink.writeln('跑 ishkafel analyze <任务> 或在界面上重打一次');
+    }
+  }
+
   final next = task.copyWith(
     units: nextUnits,
     replacementsByUid: {

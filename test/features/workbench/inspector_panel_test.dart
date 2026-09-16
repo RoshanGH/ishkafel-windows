@@ -48,6 +48,7 @@ Future<void> _pump(WidgetTester tester, Widget child) async {
 
 void main() {
   _pinnedActions();
+  _baseOriginLine();
   _blankOverview();
   group('formatTimecode', () {
     test('formatTimecode(70033, 30) == 01:10.01', () {
@@ -322,6 +323,88 @@ void main() {
 /// 2026-09-09 设计走查真机：属性栏里时间、锁定说明、标签、音色、台词框
 /// 加起来早就超过一屏，而「拆分 / 并入」排在最后——跟着滚就永远落在
 /// 可视区外，人根本不知道有这两个按钮。现在把它们钉在面板底部。
+/// 「取自」这一行回答的是**这一段的画面从哪儿来**。
+///
+/// 真机（拼片任务 U1，2026-09-16）：这个分子 hasSource 为真——它是从别的
+/// 任务搬过来的一段——同时固定了底片。这条任务根本没有原片文件，画面早就
+/// 是底片那条素材了，面板上却写着「取自原片 00:00.00–00:10.00」，
+/// 一条并不存在的原片上的坐标。
+void _baseOriginLine() {
+  Future<void> pumpUnit(WidgetTester tester, SemanticUnit unit) async {
+    final controller = SegmentationEditorController(
+      initialUnits: [unit],
+      durationMs: 10000,
+      fps: _fps,
+      sentences: const [],
+    );
+    controller.select(const EditorSelection.unit(0));
+    await tester.pumpWidget(MaterialApp(
+        home: Material(child: InspectorPanel(controller: controller, fps: _fps))));
+    await tester.pumpAndSettle();
+  }
+
+  const pinned = SemanticUnit(
+    uid: 'u0',
+    index: 0,
+    startMs: 0,
+    endMs: 10000,
+    transcript: '主卖点解决方案',
+    baseCandidateId: 114799,
+    shots: [
+      Shot(startMs: 0, endMs: 5000),
+      Shot(startMs: 5000, endMs: 10000),
+    ],
+  );
+
+  testWidgets('固定过底片：写「取自底片」，不写那条并不存在的原片', (tester) async {
+    await pumpUnit(tester, pinned);
+
+    expect(find.text('取自底片'), findsOneWidget);
+    expect(find.text('取自原片'), findsNothing);
+  });
+
+  testWidgets('时长按底片那几镜算，别和上面的「成片 0~16.09」打架', (tester) async {
+    // 16.09s 的底片挂在一个 10s 的原片坑位上：unit.durationMs 还是 10s
+    await pumpUnit(
+        tester,
+        const SemanticUnit(
+          uid: 'u0',
+          index: 0,
+          startMs: 0,
+          endMs: 10000,
+          transcript: '主卖点解决方案',
+          baseCandidateId: 114799,
+          shots: [
+            Shot(startMs: 0, endMs: 8000),
+            Shot(startMs: 8000, endMs: 16090),
+          ],
+        ));
+
+    expect(find.text('16.09s'), findsOneWidget);
+    expect(find.text('10.00s'), findsNothing);
+  });
+
+  testWidgets('没固定底片的照旧写「取自原片」', (tester) async {
+    // copyWith 清不掉 baseCandidateId（null 是「不改」），重建一个
+    await pumpUnit(
+        tester,
+        const SemanticUnit(
+          uid: 'u0',
+          index: 0,
+          startMs: 0,
+          endMs: 10000,
+          transcript: '主卖点解决方案',
+          shots: [
+            Shot(startMs: 0, endMs: 5000),
+            Shot(startMs: 5000, endMs: 10000),
+          ],
+        ));
+
+    expect(find.text('取自原片'), findsOneWidget);
+    expect(find.text('取自底片'), findsNothing);
+  });
+}
+
 void _pinnedActions() {
   testWidgets('面板矮到装不下时，拆分/并入还在屏幕上', (tester) async {
     final controller = SegmentationEditorController(

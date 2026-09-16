@@ -478,11 +478,14 @@ class _InspectorPanelState extends State<InspectorPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 手加的单元没有台词，它是插进来的一段纯画面——标出来，
-          // 不然混在真台词单元里看不出区别
+          // 手加的单元原片里没有它——标出来，不然混在真台词单元里看不出
+          // 区别。但固定过底片的已经不是「纯画面」了：那条素材转写过，
+          // 它有台词、有字幕、镜头也打过标
           inspectorTitle(unit.hasSource
               ? '台词语义单元 — U${unit.index + 1}'
-              : '插入段 — U${unit.index + 1}（原片里没有，纯画面）'),
+              : hasOwnBaseShots(unit)
+                  ? '插入段 — U${unit.index + 1}（画面与台词都来自底片素材）'
+                  : '插入段 — U${unit.index + 1}（原片里没有，纯画面）'),
           const SizedBox(height: 10),
           inspectorCard([
             inspectorTimeRow(
@@ -512,15 +515,34 @@ class _InspectorPanelState extends State<InspectorPanel> {
                 '时长',
                 unitDurationLabel(
                   placeholderMs: unit.durationMs,
-                  composedMs: widget.composedDurationOf?.call(unitIndex),
+                  // **固定过底片的走同一条轴**：这一段的真实长度是底片切出来
+                  // 那几镜的跨度，而 unit.startMs/endMs 还是原来那个原片
+                  // 坑位。真机上一条 16.09s 的底片挂在 10s 的坑位上，
+                  // 这里写「10.00s」，上面两行却写着「成片 0~16.09」
+                  // ——同一张卡片自相矛盾
+                  composedMs: hasOwnBaseShots(unit)
+                      ? _axis.durationOf(unitIndex)
+                      : widget.composedDurationOf?.call(unitIndex),
                   hasSource: unit.hasSource,
                 )),
             inspectorInfoRow('镜头数', '${unit.shots.length}'),
+            // 这一行回答的是**这一段的画面从哪儿来**，所以顺序和
+            // `baseChoiceOf` 一致：固定过底片的先认底片。
+            //
+            // 真机上的反例：拼片任务的分子 hasSource 为真（它是从别的任务
+            // 搬过来的一段），可这条任务根本没有原片文件，画面早就换成了
+            // 底片那条素材——先判 hasSource 的话，这里写的是「取自原片
+            // 00:00.00–00:10.00」，一条并不存在的原片上的坐标
+            if (hasOwnBaseShots(unit))
+              inspectorSubRow(
+                  '取自底片',
+                  '${formatTimecode(0, widget.fps)} – '
+                      '${formatTimecode(unit.shots.last.endMs - unit.startMs, widget.fps)}')
             // 手加的单元原片里根本没有它——它的 startMs/endMs 只是塞在原片
             // 末尾的占位。给出来就是个纯假数字（真机上它写着
             // 01:36.07–01:46.07，而原片只有 96.2s），所以这一行只对
             // 真的取自原片的单元出现
-            if (unit.hasSource)
+            else if (unit.hasSource)
               inspectorSubRow(
                   '取自原片',
                   '${formatTimecode(unit.startMs, widget.fps)}'
@@ -543,8 +565,11 @@ class _InspectorPanelState extends State<InspectorPanel> {
                     : () => widget.onEditUnitTags!(unitIndex),
               ),
           // 没有原片来源的单元没有台词：换音色没得念、台词框永远是空的。
-          // **按单元判而不是按任务判**——有原片的任务里也会有手加的单元
-          if (unit.hasSource) ...[
+          // **按单元判而不是按任务判**——有原片的任务里也会有手加的单元。
+          //
+          // 固定过底片的除外：它的台词是从那条素材转写出来的，跟原片单元
+          // 一样有话可念、有词可改（2026-09-15 真机：「该有的都要有」）
+          if (unit.hasSource || hasOwnBaseShots(unit)) ...[
             const SizedBox(height: 10),
             VoiceCard(
               voice: widget.voiceOf?.call(unitIndex),
@@ -599,8 +624,10 @@ class _InspectorPanelState extends State<InspectorPanel> {
     final units = widget.controller.units;
     if (unitIndex < 0 || unitIndex >= units.length) return null;
     final unit = units[unitIndex];
-    // 拆分/并入是「在一条固定的原片时间轴上换个切法」。手加的单元
-    // 是加出来的，没有台词可拆、也没有原片区间可并
+    // 拆分/并入是「在一条固定的原片时间轴上换个切法」。手加的单元是加出来
+    // 的，没有原片区间可并；**固定过底片的也不行**——拆开之后两半各自的
+    // 镜头还挂着同一张底片的偏移，对不上任何一边（SegmentationEditOps
+    // 那边同样拒绝，两处口径一致）。要改这一段的切法，用「重新切分」
     if (!unit.hasSource) return null;
     final locks = widget.controller.locks;
     final structureLocked = locks.unitHasAnyLock(unitIndex);
@@ -703,6 +730,8 @@ class _InspectorPanelState extends State<InspectorPanel> {
           // 换过素材的镜头，原片的字跟着旧画面没了，这里的字会重新烧上去
           SubtitleEditorCard(
             replaced: widget.shotReplaced?.call(unitIndex, shotIndex) ?? false,
+            // 底片是素材的段落：字幕取自它自己的转写，不是原片那份 ASR
+            onMaterialBase: onBase,
             lines: widget.subtitleLinesOf?.call(unitIndex, shotIndex) ??
                 const [],
             edited: widget.subtitleEdited?.call(unitIndex, shotIndex) ?? false,

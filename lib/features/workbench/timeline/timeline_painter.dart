@@ -13,6 +13,7 @@ import 'package:ishkafel/app/theme/app_spacing.dart';
 import 'package:ishkafel/app/theme/app_typography.dart';
 import 'package:ishkafel/core/editing/segmentation_editor_controller.dart';
 import 'package:ishkafel/core/models/semantic_unit.dart';
+import 'package:ishkafel/core/replacement/unit_base.dart';
 import 'package:ishkafel/core/subtitle/subtitle_overlay.dart';
 import 'package:ishkafel/core/subtitle/subtitle_track.dart';
 import 'bgm_edge_hit.dart';
@@ -120,6 +121,15 @@ class TimelinePainter extends CustomPainter {
   final TimelineMediaStatus? thumbStatus;
   final TimelineMediaStatus? waveStatus;
 
+  /// 底片固定过的单元各自的画面（单元 uid → 已解码的每一格）。
+  ///
+  /// 那几段的画面来自**素材**，原片那份缩略图里根本没有它们——不单独画，
+  /// 时间线上那一格永远是空的，而它明明有画面
+  final Map<String, List<ui.Image?>> baseThumbImages;
+
+  /// 同上，那几段自己的波形
+  final Map<String, List<double>> baseWaveEnvelopes;
+
   /// 文字排版缓存。由 [TimelineView] 持有并跨帧复用——时间线每帧要画几十段
   /// 文字，而它们在两帧之间几乎从不变化（播放头移动不改变任何一段文字）。
   final TextLayoutCache textCache;
@@ -168,6 +178,8 @@ class TimelinePainter extends CustomPainter {
     this.mediaStatus = TimelineMediaStatus.ready,
     this.thumbStatus,
     this.waveStatus,
+    this.baseThumbImages = const {},
+    this.baseWaveEnvelopes = const {},
     this.hoveredLabelTop,
     required this.textCache,
   });
@@ -803,13 +815,29 @@ class TimelinePainter extends CustomPainter {
   void _paintThumbsTrack(Canvas canvas, Size size) {
     final images = thumbImages;
     // **全是 null 也算空**：抽帧全失败时列表长度照旧，只判 isEmpty 会让
-    // 这条轨画成一片没有任何说明的空白
-    if (images == null ||
+    // 这条轨画成一片没有任何说明的空白。
+    //
+    // 但**底片那几段还是要画**：拼片任务整条没有原片，原片这份当然是空的，
+    // 而固定过底片的单元有画面——早早 return 的话它永远画不出来
+    // （2026-09-15 真机：「画面和音频还是空的」，任务正是拼片）
+    final originEmpty = images == null ||
         images.isEmpty ||
-        images.every((img) => img == null)) {
+        images.every((img) => img == null);
+    if (originEmpty && baseThumbImages.isEmpty) {
       _paintTrackPlaceholder(canvas, size, TimelineTracks.thumbsTop,
           TimelineTracks.thumbsBottom, '画面缩略图',
           status: thumbStatus);
+      return;
+    }
+    if (originEmpty) {
+      // 原片那份没有，只画底片那几段
+      canvas.save();
+      canvas.clipRect(Rect.fromLTRB(0, TimelineTracks.thumbsTop, size.width,
+          TimelineTracks.thumbsBottom));
+      _paintBaseThumbs(canvas, size, Paint()..filterQuality = FilterQuality.low);
+      _paintNoSourceSpans(
+          canvas, size, TimelineTracks.thumbsTop, TimelineTracks.thumbsBottom);
+      canvas.restore();
       return;
     }
 
@@ -842,6 +870,7 @@ class TimelinePainter extends CustomPainter {
       }
       canvas.drawImageRect(image, _coverSrcRect(image, dst), dst, imagePaint);
     }
+    _paintBaseThumbs(canvas, size, imagePaint);
     _paintNoSourceSpans(
         canvas, size, TimelineTracks.thumbsTop, TimelineTracks.thumbsBottom);
     canvas.restore();
@@ -870,7 +899,67 @@ class TimelinePainter extends CustomPainter {
     return Rect.fromLTWH(0, (srcH - keepH) / 2, srcW, keepH);
   }
 
-  /// 把**原片里没有的那几段**在画面/音频轨上标出来。
+  /// 底片固定过的那几段，铺**它自己那条素材**的缩略图。
+  ///
+  /// 原片那份胶片条里没有它们（原片上根本没这一段），不单独铺的话时间线
+  /// 上那一格永远是空的——而它明明有画面，人会以为这一段坏了
+  /// （2026-09-15 真机：「画面和音频还是空的」）
+  void _paintBaseThumbs(Canvas canvas, Size size, Paint imagePaint) {
+    for (var i = 0; i < units.length; i++) {
+      final images = baseThumbImages[units[i].uid];
+      if (images == null || images.isEmpty) continue;
+      final (left, right) = unitPx(i, units, geometry);
+      final width = right - left;
+      if (width <= 0 || right < 0 || left > size.width) continue;
+      // 这一格按张数等分铺开——每一张代表素材里等间隔的一个时刻
+      final cell = width / images.length;
+      for (var k = 0; k < images.length; k++) {
+        final dst = Rect.fromLTRB(left + cell * k, TimelineTracks.thumbsTop,
+            left + cell * (k + 1), TimelineTracks.thumbsBottom);
+        if (dst.right < 0 || dst.left > size.width) continue;
+        final image = images[k];
+        if (image == null) {
+          // 这一张没抽出来：画灰底而不是让后一张顶上来（顶上来就和时间
+          // 对不上了，人按画面定位切点会一直定错）
+          canvas.drawRect(dst,
+              Paint()..color = AppColors.textTertiary.withValues(alpha: 0.12));
+          continue;
+        }
+        canvas.drawImageRect(image, _coverSrcRect(image, dst), dst, imagePaint);
+      }
+    }
+  }
+
+  /// 底片固定过的那几段，画**它自己那条素材**的波形
+  void _paintBaseWaves(Canvas canvas, Size size, Paint barPaint, double midY) {
+    for (var i = 0; i < units.length; i++) {
+      final envelope = baseWaveEnvelopes[units[i].uid];
+      if (envelope == null || envelope.isEmpty) continue;
+      final (left, right) = unitPx(i, units, geometry);
+      final width = right - left;
+      if (width <= 0 || right < 0 || left > size.width) continue;
+      for (var x = left; x < right; x += _waveColumnWidth) {
+        if (x + _waveColumnWidth < 0 || x > size.width) continue;
+        final from =
+            ((x - left) / width * envelope.length).floor().clamp(0, envelope.length - 1);
+        final to = ((x + _waveColumnWidth - left) / width * envelope.length)
+            .ceil()
+            .clamp(from + 1, envelope.length);
+        var peak = 0.0;
+        for (var k = from; k < to; k++) {
+          if (envelope[k] > peak) peak = envelope[k];
+        }
+        final half = peak.clamp(0.0, 1.0) * TimelineTracks.waveH / 2;
+        canvas.drawRect(
+          Rect.fromLTRB(x, midY - half,
+              math.min(x + _waveColumnWidth, right), midY + half),
+          barPaint,
+        );
+      }
+    }
+  }
+
+  /// 把**画面真的无从取起的那几段**在画面/音频轨上标出来。
   ///
   /// 插入段（手动加的单元）在原片上不存在，这两条轨在那一段本来就是空的
   /// ——但空着不说话，人看到的是「这一大片是不是坏了」。同事第一次用就问
@@ -881,6 +970,17 @@ class TimelinePainter extends CustomPainter {
       Canvas canvas, Size size, double top, double bottom) {
     for (var i = 0; i < units.length; i++) {
       if (units[i].hasSource) continue;
+      // 底片固定过的那几段有画面、有声音（来自那条素材），刚刚已经铺上了
+      // ——再盖一层「原片里没有」就是睁眼说瞎话。
+      //
+      // **先看固定没固定，再看图加载出来没有**：缩略图是异步解出来的，
+      // 只认 baseThumbImages 的话，切完到图出来之间那几秒，这一段会先
+      // 被扣上「原片里没有」再自己消失
+      if (hasOwnBaseShots(units[i])) continue;
+      if (baseThumbImages.containsKey(units[i].uid) ||
+          baseWaveEnvelopes.containsKey(units[i].uid)) {
+        continue;
+      }
       final (left, right) = unitPx(i, units, geometry);
       if (right < 0 || left > size.width) continue;
       final rect = Rect.fromLTRB(left, top, right, bottom);
@@ -935,13 +1035,25 @@ class TimelinePainter extends CustomPainter {
   void _paintWaveTrack(Canvas canvas, Size size) {
     final envelope = waveEnvelope;
     // **全 0 也算空**：音频提取失败时兜底返回的正是全 0，画出来是贴着底的
-    // 一条直线，看着像「这一段本来就没声音」
-    if (envelope == null ||
+    // 一条直线，看着像「这一段本来就没声音」。
+    // 底片那几段照样要画（理由同画面轨）
+    final originEmpty = envelope == null ||
         envelope.isEmpty ||
-        envelope.every((v) => v == 0)) {
+        envelope.every((v) => v == 0);
+    if (originEmpty && baseWaveEnvelopes.isEmpty) {
       _paintTrackPlaceholder(canvas, size, TimelineTracks.waveTop,
           TimelineTracks.waveBottom, '音频波形',
           status: waveStatus);
+      return;
+    }
+    if (originEmpty) {
+      _paintBaseWaves(
+          canvas,
+          size,
+          Paint()..color = AppColors.textTertiary.withValues(alpha: 0.55),
+          (TimelineTracks.waveTop + TimelineTracks.waveBottom) / 2);
+      _paintNoSourceSpans(
+          canvas, size, TimelineTracks.waveTop, TimelineTracks.waveBottom);
       return;
     }
 
@@ -984,7 +1096,9 @@ class TimelinePainter extends CustomPainter {
         barPaint,
       );
     }
-    // 插入段那几段同样要标出来——不标的话那片空白看着像「波形没算出来」
+    // 底片固定过的那几段画它自己那条素材的波形
+    _paintBaseWaves(canvas, size, barPaint, midY);
+    // 真的无从取起的那几段标出来——不标的话那片空白看着像「波形没算出来」
     _paintNoSourceSpans(
         canvas, size, TimelineTracks.waveTop, TimelineTracks.waveBottom);
   }
@@ -1035,6 +1149,14 @@ class TimelinePainter extends CustomPainter {
         oldDelegate.mediaStatus != mediaStatus ||
         oldDelegate.thumbImages != thumbImages ||
         oldDelegate.waveEnvelope != waveEnvelope ||
+        // 底片那几段的画面/波形是**后到的**（要先抽帧、先算包络）。
+        // 不算进来的话图解好了躺在那儿，画布不重画——时间线上那一格
+        // 照旧是空的，和「拖字幕拖不动」是同一类漏
+        // （2026-09-15 真机：改了三轮才发现卡在这一行）
+        oldDelegate.baseThumbImages != baseThumbImages ||
+        oldDelegate.baseWaveEnvelopes != baseWaveEnvelopes ||
+        oldDelegate.thumbStatus != thumbStatus ||
+        oldDelegate.waveStatus != waveStatus ||
         oldDelegate.playheadMs != playheadMs ||
         oldDelegate.bgm != bgm ||
         oldDelegate.bgmSelecting != bgmSelecting ||

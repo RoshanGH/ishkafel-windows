@@ -546,6 +546,9 @@ class ExportRunner {
           clips: clips,
           renderSpec: renderSpec,
           subtitleSentences: subtitleSentences,
+          // 底片固定过的单元字幕从它自己的转写里取——原片那份量的是原片
+          baseSentencesOf: (u) =>
+              u >= 0 && u < units.length ? units[u].baseSentences : null,
         );
         out.add(ExportOutcome(
           index: combo.index,
@@ -590,6 +593,8 @@ class ExportRunner {
     required ExportSpec renderSpec,
     required List<AsrSentence> subtitleSentences,
     required SubtitleTrack subtitleTrack,
+    /// 底片固定过的单元自己的转写（字幕从它取，不是原片那份）
+    List<AsrSentence>? Function(int unitIndex)? baseSentencesOf,
   }) async {
     // 段落渲染并行（窗口 3）：一条成片几十段逐段串行是导出慢的主因之一。
     // 窗口不开大——每个 ffmpeg 自己就吃多核，开太多只会互相抢
@@ -606,6 +611,7 @@ class ExportRunner {
             renderSpec,
             subtitleSentences,
             subtitleTrack,
+            baseSentencesOf,
           ).then((path) => parts[j] = path),
       ];
       await Future.wait(batch);
@@ -651,7 +657,13 @@ class ExportRunner {
     final empty = <int>{};
     for (final combo in combos) {
       for (final segment in combo.segments) {
-        if (segment.isOriginal) empty.add(segment.unitIndex);
+        // **底片那几镜不算空**：它们没挑替换素材，但画面取自这个单元的
+        // 底片（`baseCandidateId`），不是「没东西可放」。不认这一条的话，
+        // 拼片任务里切过底片的段落一律导不出去，报的还是「还没挑素材」
+        // ——而人明明挑了、还切了、还打了标（2026-09-15 真机撞到）
+        if (segment.isOriginal && segment.baseCandidateId == null) {
+          empty.add(segment.unitIndex);
+        }
       }
     }
     if (empty.isEmpty) return null;
@@ -669,6 +681,8 @@ class ExportRunner {
     ExportSpec renderSpec,
     List<AsrSentence> subtitleSentences,
     SubtitleTrack subtitleTrack,
+    /// 底片固定过的单元自己的转写（单元下标 → 素材内时间戳的句子）
+    List<AsrSentence>? Function(int unitIndex)? baseSentencesOf,
   ) async {
     // 规格进指纹：同一段在 1080 和 720 下是两份不同的产物，
     // 不区分的话第二次导出会直接命中第一次的缓存，用户拿到的还是旧规格。
@@ -686,9 +700,12 @@ class ExportRunner {
             shotIndex: segment.shotIndex!,
             slotStartMs: segment.startMs,
             slotEndMs: segment.endMs,
-            // 底片是素材的那几镜：ASR 那份量的是原片，跟这段画面毫不相干，
-            // 只认人手排过的
-            onMaterialBase: segment.baseCandidateId != null,
+            // 底片是素材的那几镜：原片那份 ASR 量的是原片，跟这段画面毫不
+            // 相干；字幕从**底片自己的转写**里取，坑位也换成素材内偏移
+            onMaterialBase: segment.unitBaseCandidateId != null,
+            baseSentences: baseSentencesOf?.call(segment.unitIndex),
+            baseSlotStartMs: segment.baseStartMs,
+            baseSlotEndMs: segment.baseStartMs + segment.sourceDurationMs,
           );
     final subFingerprint = subtitleFingerprint(subtitleLines);
     final subKey = subFingerprint.isEmpty
