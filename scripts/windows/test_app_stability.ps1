@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $PSScriptRoot 'process_compat.ps1')
 $buildRoot = (Resolve-Path (Join-Path $projectRoot 'build')).Path
 if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
     $ExecutablePath = Join-Path $buildRoot 'windows\x64\runner\Release\ishkafel.exe'
@@ -18,9 +19,10 @@ $ReportPath = [System.IO.Path]::GetFullPath($ReportPath)
 [System.IO.Directory]::CreateDirectory((Split-Path -Parent $ReportPath)) | Out-Null
 
 $runRoot = Join-Path $buildRoot ('app-stability-' + [Guid]::NewGuid().ToString('N'))
-$appData = Join-Path $runRoot '隔离 AppData'
-$dataDir = Join-Path $runRoot '隔离 Data'
-$logDir = Join-Path $runRoot '隔离 Logs'
+$isolatedLabel = -join @([char]0x9694, [char]0x79BB)
+$appData = Join-Path $runRoot "$isolatedLabel AppData"
+$dataDir = Join-Path $runRoot "$isolatedLabel Data"
+$logDir = Join-Path $runRoot "$isolatedLabel Logs"
 $resolvedRunRoot = [System.IO.Path]::GetFullPath($runRoot)
 $allowedPrefix = $buildRoot.TrimEnd('\') + '\'
 if (-not $resolvedRunRoot.StartsWith($allowedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -30,11 +32,12 @@ if (-not $resolvedRunRoot.StartsWith($allowedPrefix, [System.StringComparison]::
 
 $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
 $startInfo.FileName = $ExecutablePath
+$startInfo.Arguments = ''
 $startInfo.UseShellExecute = $false
-$startInfo.Environment['APPDATA'] = $appData
-$startInfo.Environment['LOCALAPPDATA'] = (Join-Path $runRoot 'LocalAppData')
-$startInfo.Environment['ISHKAFEL_DATA_DIR'] = $dataDir
-$startInfo.Environment['ISHKAFEL_LOG_DIR'] = $logDir
+$startInfo.EnvironmentVariables['APPDATA'] = $appData
+$startInfo.EnvironmentVariables['LOCALAPPDATA'] = (Join-Path $runRoot 'LocalAppData')
+$startInfo.EnvironmentVariables['ISHKAFEL_DATA_DIR'] = $dataDir
+$startInfo.EnvironmentVariables['ISHKAFEL_LOG_DIR'] = $logDir
 $process = [System.Diagnostics.Process]::new()
 $process.StartInfo = $startInfo
 $samples = @()
@@ -107,7 +110,7 @@ try {
 }
 finally {
     if (-not $process.HasExited) {
-        $process.Kill($true)
+        $process.Kill()
         $process.WaitForExit()
     }
     $process.Dispose()

@@ -45,11 +45,9 @@ String exportFileName({
   required int index,
   required String extension,
 }) {
-  // 先把换行制表压成空格，再清非法字符——反过来的话换行会先被当成非法字符
-  // 变成横杠，「A\n线」就成了「A-线」
-  final cleaned = (name ?? '')
-      .replaceAll(_spaces, ' ')
-      .replaceAll(_illegal, '-')
+  // 先用同一份 Windows 路径段契约处理设备保留名，再补上
+  // 成片文件名特有的首尾横杠规则。
+  final cleaned = safePathSegment(name ?? '', fallback: '')
       // 首尾的点和横杠去掉：`../../etc` 清完是 `..-..-etc`，
       // 以点开头在 Finder 里是隐藏文件，人会以为片子没导出来
       .replaceAll(RegExp(r'^[.\-\s]+|[.\-\s]+$'), '')
@@ -58,8 +56,5 @@ String exportFileName({
   if (cleaned.isEmpty || !RegExp(r'[\w\u4e00-\u9fa5]').hasMatch(cleaned)) {
     return '变体$index.$extension';
   }
-  final capped = cleaned.length <= _maxNameLength
-      ? cleaned
-      : cleaned.substring(0, _maxNameLength).trim();
-  return '$capped.$extension';
+  return '$cleaned.$extension';
 }

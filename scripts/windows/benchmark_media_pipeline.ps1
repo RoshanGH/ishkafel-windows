@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $PSScriptRoot 'process_compat.ps1')
 $buildRoot = (Resolve-Path (Join-Path $projectRoot 'build')).Path
 $releaseRoot = Join-Path $buildRoot 'windows\x64\runner\Release'
 if ([string]::IsNullOrWhiteSpace($FfmpegPath)) {
@@ -30,7 +31,8 @@ $cases = @(
 )
 
 $runRoot = Join-Path $buildRoot ('media-benchmark-' + [Guid]::NewGuid().ToString('N'))
-$mediaRoot = Join-Path $runRoot '中文 性能'
+$chineseLabel = -join @([char]0x4E2D, [char]0x6587)
+$mediaRoot = Join-Path $runRoot "$chineseLabel performance"
 $resolvedRunRoot = [System.IO.Path]::GetFullPath($runRoot)
 $allowedPrefix = $buildRoot.TrimEnd('\') + '\'
 if (-not $resolvedRunRoot.StartsWith($allowedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -51,7 +53,7 @@ function Invoke-MeasuredProcess {
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
-    foreach ($argument in $Arguments) { $startInfo.ArgumentList.Add($argument) }
+    $startInfo.Arguments = ConvertTo-ProcessArguments -ArgumentValues $Arguments
 
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
@@ -69,7 +71,7 @@ function Invoke-MeasuredProcess {
             $process.Refresh()
             $peak = [Math]::Max($peak, $process.PeakWorkingSet64)
             if ($watch.Elapsed.TotalSeconds -gt $TimeoutSeconds) {
-                $process.Kill($true)
+                $process.Kill()
                 $process.WaitForExit()
                 throw "Process timed out after $TimeoutSeconds seconds: $Executable"
             }

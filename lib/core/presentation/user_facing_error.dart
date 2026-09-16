@@ -20,7 +20,19 @@ String userFacingError(
       .replaceFirst(RegExp(r'^[A-Za-z_$][\w.$<>]*Exception\s*:\s*'), '')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
-  if (text.isEmpty || !RegExp(r'[\u3400-\u9fff]').hasMatch(text)) {
+  final containsSensitiveDetail = RegExp(
+    r'(?:authorization|bearer|token|api[-_ ]?key|secret|signature|password|credential|access[-_ ]?key)\s*[:=]?',
+    caseSensitive: false,
+  ).hasMatch(text) ||
+      RegExp(r'https?://', caseSensitive: false).hasMatch(text) ||
+      RegExp(r'[A-Za-z]:[\\/]').hasMatch(text) ||
+      RegExp(r'\\\\[^\\\s]+[\\/]').hasMatch(text) ||
+      RegExp(r'/(?:Users|home|var|tmp|etc)/').hasMatch(text) ||
+      text.contains('file://') ||
+      RegExp(r'(?:^|\s)#\d+\s').hasMatch(text);
+  if (text.isEmpty ||
+      !RegExp(r'[\u3400-\u9fff]').hasMatch(text) ||
+      containsSensitiveDetail) {
     return fallback;
   }
   if (text.length > maxLength) {

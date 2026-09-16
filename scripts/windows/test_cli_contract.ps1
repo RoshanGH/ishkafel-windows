@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $PSScriptRoot 'process_compat.ps1')
 $buildRoot = (Resolve-Path (Join-Path $projectRoot 'build')).Path
 
 if (-not $SkipBuild) {
@@ -16,43 +17,45 @@ if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
 }
 $ExecutablePath = (Resolve-Path -LiteralPath $ExecutablePath).Path
 
-$commands = @(
-    'analyze',
-    'apply',
-    'bgm',
-    'blank',
-    'candidates',
-    'clean',
-    'doctor',
-    'export',
-    'import',
-    'jianying',
-    'open',
-    'peek',
-    'review',
-    'script',
-    'skill',
-    'status',
-    'subtitle',
-    'tag-groups',
-    'task',
-    'task-copy',
-    'task-delete',
-    'task-rename',
-    'tasks',
-    'todo',
-    'unit',
-    'ui',
-    'voice',
-    'voices'
-)
+$expectedExitCodes = [ordered]@{
+    'analyze' = 2
+    'apply' = 2
+    'bgm' = 2
+    'blank' = 2
+    'candidates' = 2
+    'clean' = 0
+    'doctor' = 5
+    'export' = 2
+    'import' = 2
+    'jianying' = 2
+    'open' = 2
+    'peek' = 2
+    'review' = 2
+    'script' = 2
+    'skill' = 0
+    'status' = 0
+    'subtitle' = 2
+    'tag-groups' = 5
+    'task' = 2
+    'task-copy' = 2
+    'task-delete' = 2
+    'task-rename' = 2
+    'tasks' = 0
+    'todo' = 2
+    'unit' = 2
+    'ui' = 2
+    'voice' = 2
+    'voices' = 0
+}
+$commands = @($expectedExitCodes.Keys)
 
 if ($commands.Count -ne 28 -or ($commands | Select-Object -Unique).Count -ne 28) {
     throw 'CLI contract list must contain exactly 28 unique commands.'
 }
 
 $runRoot = Join-Path $buildRoot ('cli-contract-' + [Guid]::NewGuid().ToString('N'))
-$dataDir = Join-Path $runRoot '中文 数据'
+$chineseLabel = -join @([char]0x4E2D, [char]0x6587)
+$dataDir = Join-Path $runRoot "$chineseLabel data"
 $resolvedRunRoot = [System.IO.Path]::GetFullPath($runRoot)
 $allowedPrefix = $buildRoot.TrimEnd('\') + '\'
 if (-not $resolvedRunRoot.StartsWith($allowedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -71,9 +74,13 @@ function Invoke-CliProbe {
     $startInfo.RedirectStandardError = $true
     $startInfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
     $startInfo.StandardErrorEncoding = [System.Text.Encoding]::UTF8
-    $startInfo.ArgumentList.Add('--data-dir')
-    $startInfo.ArgumentList.Add($dataDir)
-    $startInfo.ArgumentList.Add($Command)
+    # Make environment-dependent probes deterministic: this contract checks
+    # documented missing-environment exit codes, not the operator's own tools.
+    $startInfo.EnvironmentVariables['USERPROFILE'] = $runRoot
+    $startInfo.EnvironmentVariables['PATH'] = [Environment]::SystemDirectory
+    $startInfo.Arguments = ConvertTo-ProcessArguments -ArgumentValues @(
+        '--data-dir', $dataDir, $Command
+    )
 
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
@@ -82,7 +89,7 @@ function Invoke-CliProbe {
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
         $stderrTask = $process.StandardError.ReadToEndAsync()
         if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
-            $process.Kill($true)
+            $process.Kill()
             $process.WaitForExit()
             throw "CLI probe timed out after $TimeoutSeconds seconds: $Command"
         }
@@ -102,7 +109,14 @@ function Invoke-CliProbe {
 
 try {
     $help = & $ExecutablePath --help 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0 -or $help -notmatch '竖屏口播短视频工具') {
+    $expectedHelp = -join @(
+        [char]0x7AD6, [char]0x5C4F, [char]0x53E3, [char]0x64AD,
+        [char]0x77ED, [char]0x89C6, [char]0x9891, [char]0x5DE5, [char]0x5177
+    )
+    $unknownCommand = -join @(
+        [char]0x672A, [char]0x77E5, [char]0x547D, [char]0x4EE4
+    )
+    if ($LASTEXITCODE -ne 0 -or $help -notmatch [regex]::Escape($expectedHelp)) {
         throw 'Compiled CLI help did not preserve UTF-8 output.'
     }
 
@@ -110,11 +124,13 @@ try {
     foreach ($command in $commands) {
         $result = Invoke-CliProbe $command
         $combined = $result.Stdout + "`n" + $result.Stderr
-        if ($combined.Contains('未知命令')) {
+        if ($combined.Contains($unknownCommand)) {
             throw "Registered command was rejected as unknown: $command`n$combined"
         }
-        if ($result.ExitCode -lt 0 -or $result.ExitCode -gt 5) {
-            throw "Unexpected exit code for ${command}: $($result.ExitCode)`n$combined"
+        $expectedExitCode = [int]$expectedExitCodes[$command]
+        if ($result.ExitCode -ne $expectedExitCode) {
+            throw "Unexpected exit code for ${command}: $($result.ExitCode); " +
+                "expected $expectedExitCode`n$combined"
         }
         $results += $result
     }

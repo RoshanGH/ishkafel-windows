@@ -42,8 +42,14 @@ void main() {
       expect(source, contains("'$command'"), reason: '缺少 $command 真机探测');
     }
     expect(source, contains('WaitForExit'));
-    expect(source, contains('未知命令'));
-    expect(source, contains('中文 数据'));
+    expect(source, contains('0x672A'));
+    expect(source, contains('0x4EE4'));
+    expect(source, contains('0x4E2D'));
+    expect(source, contains('0x6587'));
     expect(source, contains('ConvertFrom-Json'));
+    expect(source, contains(r'$expectedExitCodes'));
+    expect(source, contains(r'$result.ExitCode -ne $expectedExitCode'));
+    expect(source, contains("EnvironmentVariables['USERPROFILE']"));
+    expect(source, contains("EnvironmentVariables['PATH']"));
   });
 }

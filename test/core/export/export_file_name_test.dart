@@ -60,4 +60,19 @@ void main() {
     expect(safePathSegment(r'A<B>|C?D*E/F\G:H"I'), 'A-B--C-D-E-F-G-H-I');
     expect(safePathSegment('...'), '未命名');
   });
+
+  test('成片文件名不得落到 Windows 设备保留名', () {
+    expect(
+      exportFileName(name: 'CON', index: 0, extension: 'mp4'),
+      '_CON.mp4',
+    );
+    expect(
+      exportFileName(name: 'Lpt1', index: 1, extension: 'mov'),
+      '_Lpt1.mov',
+    );
+    expect(
+      exportFileName(name: 'NUL.final', index: 2, extension: 'mp4'),
+      '_NUL.final.mp4',
+    );
+  });
 }

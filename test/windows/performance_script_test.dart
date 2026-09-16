@@ -22,7 +22,8 @@ void main() {
     expect(source, contains('nb_read_frames'));
     expect(source, contains('windows-media-baseline.json'));
     expect(source, contains('libx264'));
-    expect(source, contains('中文 性能'));
+    expect(source, contains('0x4E2D'));
+    expect(source, contains('0x6587'));
   });
 
   test('Windows 应用稳定性脚本使用隔离数据目录并检查存活与内存', () {
@@ -30,10 +31,25 @@ void main() {
     expect(script.existsSync(), isTrue);
     final source = script.readAsStringSync();
 
-    expect(source, contains("Environment['APPDATA']"));
+    expect(source, contains("EnvironmentVariables['APPDATA']"));
     expect(source, contains('PeakWorkingSet64'));
     expect(source, contains('HasExited'));
     expect(source, contains('windows-app-stability.json'));
     expect(source, contains('finally'));
+  });
+
+  test('Windows 真机脚本不使用 PowerShell 7 专属的进程 API', () {
+    final sources = [
+      'scripts/windows/benchmark_media_pipeline.ps1',
+      'scripts/windows/test_cli_contract.ps1',
+      'scripts/windows/test_app_stability.ps1',
+    ].map((path) => File(path).readAsStringSync()).join('\n');
+
+    expect(sources, isNot(contains('.ArgumentList')));
+    expect(sources, isNot(contains('.Environment[')));
+    expect(sources, isNot(contains(r'.Kill($true)')));
+    expect(sources, contains('.Arguments'));
+    expect(sources, contains('.EnvironmentVariables['));
+    expect(File('scripts/windows/process_compat.ps1').existsSync(), isTrue);
   });
 }

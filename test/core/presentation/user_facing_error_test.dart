@@ -39,5 +39,21 @@ void main() {
       expect(text, isNot(contains('\n')));
       expect(text.length, lessThanOrEqualTo(220));
     });
+
+    test('含中文的未知异常也不得泄漏令牌、URL 或本地路径', () {
+      final text = userFacingError(
+        StateError(
+          '请求失败 token=secret-value '
+          'https://example.test/api?signature=private '
+          r'C:\Users\张三\Videos\input.mp4',
+        ),
+        fallback: '操作失败，请稍后重试',
+      );
+
+      expect(text, '操作失败，请稍后重试');
+      expect(text, isNot(contains('secret-value')));
+      expect(text, isNot(contains('example.test')));
+      expect(text, isNot(contains(r'C:\Users')));
+    });
   });
 }
