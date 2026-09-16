@@ -40,16 +40,18 @@ void main() {
 
   test('环境变量也能覆盖', () {
     final dir = resolveDataDir(
-        env: {'HOME': '/Users/someone', 'ISHKAFEL_DATA_DIR': '/tmp/y'},
-        operatingSystem: 'macos');
+      env: {'HOME': '/Users/someone', 'ISHKAFEL_DATA_DIR': '/tmp/y'},
+      operatingSystem: 'macos',
+    );
     expect(dir.path, '/tmp/y');
   });
 
   test('显式参数优先于环境变量', () {
     final dir = resolveDataDir(
-        env: {'HOME': '/h', 'ISHKAFEL_DATA_DIR': '/tmp/y'},
-        override: '/tmp/z',
-        operatingSystem: 'macos');
+      env: {'HOME': '/h', 'ISHKAFEL_DATA_DIR': '/tmp/y'},
+      override: '/tmp/z',
+      operatingSystem: 'macos',
+    );
     expect(dir.path, '/tmp/z');
   });
 
@@ -67,5 +69,29 @@ void main() {
       operatingSystem: 'macos',
     );
     expect(dir.path, endsWith('ishkafel_data'));
+  });
+
+  test('Windows CLI 使用与 GUI 相同的用户存储根目录', () {
+    final dir = resolveDataDir(
+      env: {'APPDATA': r'C:\Users\Mayn\AppData\Roaming'},
+      operatingSystem: 'windows',
+      windowsStorageValue: (name) =>
+          name == 'StorageRoot' ? r'D:\Ishkafel\UserData' : null,
+    );
+
+    expect(dir.path, r'D:\Ishkafel\UserData\data');
+  });
+
+  test('Windows CLI 的存储根目录环境变量优先于注册表', () {
+    final dir = resolveDataDir(
+      env: {
+        'APPDATA': r'C:\Users\Mayn\AppData\Roaming',
+        'ISHKAFEL_STORAGE_ROOT': r'E:\automation',
+      },
+      operatingSystem: 'windows',
+      windowsStorageValue: (_) => r'D:\Ishkafel\UserData',
+    );
+
+    expect(dir.path, r'E:\automation\data');
   });
 }

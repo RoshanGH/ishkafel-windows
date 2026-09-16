@@ -25,6 +25,7 @@ import 'core/script/script_service_wiring.dart';
 import 'features/director/director_providers.dart';
 import 'cli/commands/open_command.dart';
 import 'core/log/app_log.dart';
+import 'core/platform/platform_paths.dart';
 import 'core/platform/runtime_directories.dart';
 import 'core/miaoa/miaoa_account_service.dart';
 import 'core/diagnostics/tool_installer.dart';
@@ -71,9 +72,11 @@ Future<void> main(List<String> args) async {
   installFlutterErrorForwarding();
   MediaKit.ensureInitialized();
   final supportDir = await getApplicationSupportDirectory();
+  final platformPaths = PlatformPaths();
   final runtimeDirectories = RuntimeDirectories(
     supportDirectory: supportDir,
     environment: Platform.environment,
+    configuredStorageRoot: platformPaths.configuredStorageRoot,
   );
   final logDir = runtimeDirectories.logDirectory;
   final dataDir = runtimeDirectories.dataDirectory;

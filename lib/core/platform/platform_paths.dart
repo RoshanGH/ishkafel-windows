@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'windows_storage_preferences.dart';
+
 const String ishkafelBundleId = 'com.jichuang.ishkafel';
 const String ishkafelCompanyName = 'com.jichuang';
 const String ishkafelProductName = 'ishkafel';
@@ -16,14 +18,21 @@ class PlatformPaths {
   final String operatingSystem;
   final Map<String, String> environment;
   final WindowsKnownFolderReader windowsKnownFolder;
+  final WindowsStorageValueReader windowsStorageValue;
 
   PlatformPaths({
     String? operatingSystem,
     Map<String, String>? environment,
     WindowsKnownFolderReader? windowsKnownFolder,
+    WindowsStorageValueReader? windowsStorageValue,
   }) : operatingSystem = operatingSystem ?? Platform.operatingSystem,
        environment = Map.unmodifiable(environment ?? Platform.environment),
-       windowsKnownFolder = windowsKnownFolder ?? _readWindowsUserShellFolder;
+       windowsKnownFolder = windowsKnownFolder ?? _readWindowsUserShellFolder,
+       windowsStorageValue =
+           windowsStorageValue ??
+           WindowsStoragePreferences(
+             operatingSystem: operatingSystem ?? Platform.operatingSystem,
+           ).readValue;
 
   p.Context get _path => p.Context(
     style: operatingSystem == 'windows' ? p.Style.windows : p.Style.posix,
@@ -86,7 +95,21 @@ class PlatformPaths {
     ),
   };
 
-  String get dataDir => _path.join(applicationSupport, 'ishkafel_data');
+  String? get configuredStorageRoot =>
+      _nonBlank(environment['ISHKAFEL_STORAGE_ROOT']) ??
+      (operatingSystem == 'windows'
+          ? _nonBlank(windowsStorageValue(storageRootValueName))
+          : null);
+
+  String get dataDir =>
+      _nonBlank(environment['ISHKAFEL_DATA_DIR']) ??
+      _underConfiguredStorage('data') ??
+      _path.join(applicationSupport, 'ishkafel_data');
+
+  String? _underConfiguredStorage(String child) {
+    final root = configuredStorageRoot;
+    return root == null ? null : _path.join(root, child);
+  }
 
   bool isTemporaryPath(String candidate) {
     bool sameOrWithin(String root) {

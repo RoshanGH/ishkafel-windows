@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import '../core/platform/platform_paths.dart';
+import '../core/platform/windows_storage_preferences.dart';
 
 /// app 的 bundle id。数据目录是按它分的，两边必须写同一个值
 const String bundleId = ishkafelBundleId;
@@ -19,14 +20,18 @@ Directory resolveDataDir({
   Map<String, String>? env,
   String? override,
   String? operatingSystem,
+  WindowsStorageValueReader? windowsStorageValue,
 }) {
   final e = env ?? Platform.environment;
   final explicit = override ?? e['ISHKAFEL_DATA_DIR'];
   if (explicit != null && explicit.trim().isNotEmpty) {
     return Directory(explicit.trim());
   }
-  return Directory(PlatformPaths(
-    operatingSystem: operatingSystem,
-    environment: e,
-  ).dataDir);
+  return Directory(
+    PlatformPaths(
+      operatingSystem: operatingSystem,
+      environment: e,
+      windowsStorageValue: windowsStorageValue,
+    ).dataDir,
+  );
 }

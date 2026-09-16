@@ -10,23 +10,38 @@ import 'package:path/path.dart' as p;
 class RuntimeDirectories {
   final Directory supportDirectory;
   final Map<String, String> environment;
+  final String? configuredStorageRoot;
 
   const RuntimeDirectories({
     required this.supportDirectory,
     this.environment = const {},
+    this.configuredStorageRoot,
   });
 
   Directory get dataDirectory => Directory(
-        _override('ISHKAFEL_DATA_DIR') ??
-            p.join(supportDirectory.path, 'ishkafel_data'),
-      );
+    _override('ISHKAFEL_DATA_DIR') ??
+        _underStorageRoot('data') ??
+        p.join(supportDirectory.path, 'ishkafel_data'),
+  );
 
   Directory get logDirectory => Directory(
-        _override('ISHKAFEL_LOG_DIR') ?? p.join(supportDirectory.path, 'logs'),
-      );
+    _override('ISHKAFEL_LOG_DIR') ??
+        _underStorageRoot('logs') ??
+        p.join(supportDirectory.path, 'logs'),
+  );
+
+  String? _underStorageRoot(String child) {
+    final root =
+        _override('ISHKAFEL_STORAGE_ROOT') ?? _nonBlank(configuredStorageRoot);
+    return root == null ? null : p.join(root, child);
+  }
 
   String? _override(String name) {
-    final value = environment[name]?.trim();
-    return value == null || value.isEmpty ? null : value;
+    return _nonBlank(environment[name]);
+  }
+
+  static String? _nonBlank(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 }

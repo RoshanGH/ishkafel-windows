@@ -17,6 +17,7 @@ void main() {
           'My Video' => r'D:\OneDrive 重定向\视频',
           _ => null,
         },
+        windowsStorageValue: (_) => null,
       );
 
       expect(
@@ -51,6 +52,7 @@ void main() {
           'Desktop' => r'%OneDrive%\桌面',
           _ => null,
         },
+        windowsStorageValue: (_) => null,
       );
 
       expect(paths.desktopDirectory, r'D:\云盘\桌面');
@@ -94,6 +96,7 @@ void main() {
         operatingSystem: 'windows',
         environment: const {},
         windowsKnownFolder: (_) => null,
+        windowsStorageValue: (_) => null,
       );
       expect(() => paths.applicationSupport, throwsStateError);
     });
