@@ -1,5 +1,6 @@
 import '../models/semantic_unit.dart';
 import '../models/shot.dart';
+import '../models/unit_uid.dart';
 
 /// 把打标结果合并回**当前**的单元列表。
 ///
@@ -7,6 +8,11 @@ import '../models/shot.dart';
 /// 在后台补（见 [AnalysisPipeline]）。这七成的时间里人就坐在时间线前面拖
 /// 边界——拿打标开始那一刻的单元整份写回去，他这段时间干的活会悄无声息地
 /// 没掉。
+///
+/// 配对**按身份（[SemanticUnit.uid]），不是按下标**。打标这七成时间里人可能
+/// 加了单元、拖了顺序，下标早就不是发起打标时那一套了——按下标配，标签会
+/// 糊到别人身上（2026-09-16 真机：新加的空单元拖到第一位，凭空带上了隔壁
+/// 那个的标签）。身份是发出去就不变的，见 `unit_uid.dart`。
 ///
 /// 合并规则只有一条：**边界一模一样才认**。
 /// - 单元的起止变了：这份标签是照着旧边界打的，安到新边界上就是错的
@@ -21,9 +27,12 @@ List<SemanticUnit> mergeTagsInto(
   List<SemanticUnit> current,
   List<SemanticUnit> tagged,
 ) {
-  final byIndex = {for (final u in tagged) u.index: u};
+  final byUid = {
+    for (final u in tagged)
+      if (isUnitUid(u.uid)) u.uid: u,
+  };
   final merged = [
-    for (final unit in current) _mergeUnit(unit, byIndex[unit.index]),
+    for (final unit in current) _mergeUnit(unit, byUid[unit.uid]),
   ];
   return _changed(current, merged) ? merged : current;
 }

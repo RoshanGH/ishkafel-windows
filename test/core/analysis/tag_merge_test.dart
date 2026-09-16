@@ -6,15 +6,19 @@ import 'package:ishkafel/core/models/shot.dart';
 Shot _shot(int start, int end, {List<String> tags = const []}) =>
     Shot(startMs: start, endMs: end, tags: tags);
 
+/// [uid] 缺省按 index 发一个稳定的身份。**真实数据上一定有**：
+/// 读档走 `RenewTask.fromJson` → `ensureUnitUids`，编辑器收下单元时再补一次
 SemanticUnit _unit(
   int index,
   int start,
   int end, {
+  String? uid,
   List<String> tags = const [],
   List<Shot> shots = const [],
   bool tagsStale = false,
 }) =>
     SemanticUnit(
+      uid: uid ?? 'uid$index',
       index: index,
       startMs: start,
       endMs: end,
@@ -103,6 +107,44 @@ void main() {
       mergeTagsInto(current, tagged);
 
       expect(current.single.tags, isEmpty);
+    });
+  });
+
+  group('配对按身份，不是按下标', () {
+    // 产品负责人 2026-09-16（真机）：「我新添加的一个测试单元，拉到第一位，
+    // 我还没有做任何操作，它为什么就有标签了？」——打标那七成时间里人就在
+    // 工作台里加单元、拖顺序，下标早就不是发起打标时那一套了
+    test('人在打标期间拖了顺序：标签跟着单元走，不跟着位置走', () {
+      final a = _unit(0, 0, 1000, uid: 'aaa');
+      final b = _unit(1, 1000, 2000, uid: 'bbb');
+      // 打标结果是照着「A 在前」打的
+      final tagged = [
+        _unit(0, 0, 1000, uid: 'aaa', tags: ['痛点']),
+        _unit(1, 1000, 2000, uid: 'bbb', tags: ['促单']),
+      ];
+      // 而人已经把 B 拖到了最前面
+      final current = [b.copyWith(index: 0), a.copyWith(index: 1)];
+
+      final merged = mergeTagsInto(current, tagged);
+
+      expect(merged[0].uid, 'bbb');
+      expect(merged[0].tags, ['促单'], reason: 'B 的标签该落在 B 身上');
+      expect(merged[1].uid, 'aaa');
+      expect(merged[1].tags, ['痛点']);
+    });
+
+    test('新加进来的单元不在这份结果里，一个标签都不给它', () {
+      final tagged = [_unit(0, 0, 1000, uid: 'aaa', tags: ['痛点'])];
+      // 人加了个空单元并拖到最前
+      final current = [
+        _unit(0, 2000, 12000, uid: 'new'),
+        _unit(1, 0, 1000, uid: 'aaa'),
+      ];
+
+      final merged = mergeTagsInto(current, tagged);
+
+      expect(merged[0].tags, isEmpty, reason: '它压根没参与这一轮打标');
+      expect(merged[1].tags, ['痛点']);
     });
   });
 }

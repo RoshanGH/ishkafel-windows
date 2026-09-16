@@ -4,6 +4,8 @@ import '../../core/analysis/pending_tagging.dart';
 import '../../core/analysis/tagging_service.dart';
 import '../../core/log/app_log.dart';
 import '../../core/models/renew_task.dart';
+import '../../core/models/semantic_unit.dart';
+import '../../core/models/unit_uid.dart';
 import '../../core/storage/task_repository.dart';
 
 /// 补标签补到哪儿了。**界面自己显示**——这是软件在干活，不是 Agent，
@@ -94,19 +96,25 @@ class TaggingResumer {
       // 拿手上这份旧的整个覆盖回去，会把他刚做的编辑抹掉
       final fresh = await repository.findById(task.id);
       if (fresh == null) return false;
+      // **配对按身份，不是按下标**。重读回来的这份正是他改过的：加过单元、
+      // 拖过顺序，下标早就不是发起打标时那一套了。按下标写回，标签会结结实实
+      // 糊到别人身上，而且哪儿都不报错——2026-09-16 真机：新加的空单元拖到
+      // 第一位，还没做任何操作就凭空带上了隔壁那个的标签。
+      //
+      // 身份发出去就不变（见 `unit_uid.dart`），产品负责人当初立这条规矩
+      // 说的就是这件事：「它这个编号下的所有数据都是跟着这个编号走。」
+      final taggedByUid = {
+        for (final u in tagged)
+          if (isUnitUid(u.uid)) u.uid: u,
+      };
+      final wantUids = {
+        for (final i in want)
+          if (i < units.length && isUnitUid(units[i].uid)) units[i].uid,
+      };
       final merged = [
-        for (var i = 0; i < (fresh.units?.length ?? 0); i++)
-          if (want.contains(i) && i < tagged.length)
-            // 只把补上的标签搬过去，边界以他现在这份为准
-            fresh.units![i].copyWith(
-              tags: tagged[i].tags,
-              trace: tagged[i].trace,
-              shots: fresh.units![i].shots.length == tagged[i].shots.length
-                  ? tagged[i].shots
-                  : fresh.units![i].shots,
-            )
-          else
-            fresh.units![i],
+        for (final unit in fresh.units ?? const <SemanticUnit>[])
+          _withNewTags(unit,
+              wantUids.contains(unit.uid) ? taggedByUid[unit.uid] : null),
       ];
       await repository.save(
           fresh.copyWith(units: merged, updatedAt: DateTime.now()));
@@ -117,4 +125,16 @@ class TaggingResumer {
       return false;
     }
   }
+}
+
+/// 把补出来的标签搬到 [unit] 身上。**边界以他现在这份为准**——
+/// 补标签期间他可能动过切分，镜头数对不上就不动镜头那一层。
+/// [tagged] 为 null（不在这一轮、或身份对不上）时原样返回
+SemanticUnit _withNewTags(SemanticUnit unit, SemanticUnit? tagged) {
+  if (tagged == null) return unit;
+  return unit.copyWith(
+    tags: tagged.tags,
+    trace: tagged.trace,
+    shots: unit.shots.length == tagged.shots.length ? tagged.shots : unit.shots,
+  );
 }

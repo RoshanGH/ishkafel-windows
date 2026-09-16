@@ -74,7 +74,6 @@ import '../../core/audio/audio_preview.dart';
 import '../../core/audio/bgm_plan.dart';
 import '../../core/audio/vocal_separator.dart';
 import 'bgm_picker_sheet.dart';
-import 'candidate_badge.dart';
 import 'voice_picker_sheet.dart';
 import 'voice_swap_runner.dart';
 import 'timeline/bgm_track.dart';
@@ -361,6 +360,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
           '${validation.plans.length} 条方案通过校验，正在投影到时间线',
           focus: const AgentFocus(module: 'workbench'));
       setState(() => _replacements = replacements);
+      // 投影完预览要当场换上——**可视化模式就是产品本身**：人盯着屏幕看
+      // Agent 干活，播报说「已经落在时间线上」而画面还是原片，他没法判断
+      // 这一步到底成没成（和挑素材那处同一个毛病，见 _onReplacementsChanged）
+      _syncPreviewAudio();
       _task = _task.copyWith(replacementsByUid: _byUid(replacements));
       await _tasks!.savePickingPlan(_task, replacements);
       await voice?.sayAndHold(
@@ -2884,6 +2887,11 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     setState(() => _replacements = next);
     _syncEditLocks();
     _pinMaterials();
+    // **挑完素材预览要当场换上**。改字幕、改音轨档位、拖边界都记得推这一下，
+    // 偏偏挑素材这个最主要的动作漏了：选完那一段是黑的，要去点一下别的
+    // 台词语义单元（那条路会经过 _onEditorChanged）才看得到画面
+    // ——产品负责人 2026-09-16 真机
+    _syncPreviewAudio();
     try {
       await _tasks!.savePickingPlan(_task, next);
       _task = _task.copyWith(replacementsByUid: _byUid(next));
@@ -3365,7 +3373,6 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
                       ? () => _previewVoice(i)
                       : null;
                 },
-                candidateBadge: candidateBadgeText(_replacements ?? const []),
                 bgm: _task.bgm,
                 onBgmRangeSelected: _isEditable ? _pickBgmForRange : null,
                 onBgmSegmentTap: _isEditable ? _editBgmSegment : null,

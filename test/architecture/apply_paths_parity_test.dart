@@ -52,4 +52,29 @@ void main() {
     expect(bodyOf('gatherPickedMaterials'), contains('collectPickedMaterials'),
         reason: '那唯一一处应该在 gatherPickedMaterials 里');
   });
+
+  test('改了替换方案就要当场推一次预览——不然人看到的还是原片', () {
+    // 产品负责人 2026-09-16 真机：「选了底片，但是要切换下其他的台词语义
+    // 单元才能显示出来正常的预览。」改字幕、改音轨档位、拖边界都记得推
+    // 这一下，偏偏挑素材这个最主要的动作漏了。
+    //
+    // 删单元、调顺序那两处后面会经过 editor.replaceUnits*（进而
+    // _onEditorChanged → _syncPreviewAudio）兜住；这里钉的是没有那条
+    // 兜底的两处
+    final page = File('lib/features/workbench/workbench_page.dart')
+        .readAsStringSync();
+
+    String bodyAfter(String marker, {int lines = 20}) {
+      final at = page.indexOf(marker);
+      expect(at, greaterThan(-1), reason: '$marker 挪了位置就把这条守卫一起改');
+      return page.substring(at).split('\n').take(lines).join('\n');
+    }
+
+    expect(bodyAfter('Future<void> _onReplacementsChanged('),
+        contains('_syncPreviewAudio()'),
+        reason: '挑完素材预览要当场换上');
+    expect(bodyAfter('setState(() => _replacements = replacements);', lines: 8),
+        contains('_syncPreviewAudio()'),
+        reason: 'Agent 把方案投影到时间线之后，预览也要跟着换');
+  });
 }

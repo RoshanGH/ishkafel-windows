@@ -1,5 +1,6 @@
 import '../models/semantic_unit.dart';
 import '../models/shot.dart';
+import '../models/unit_uid.dart';
 import 'boundary_snapper.dart';
 
 /// 语义单元草稿（LLM 语义分组的输出：粗边界 + 台词）
@@ -99,6 +100,11 @@ class SegmentationBuilder {
             ..sort();
       final edges = [start, ...inner, end];
       units.add(SemanticUnit(
+        // **身份在这儿发**：切分出来那一刻就有，别等落库再读回来补
+        // （`unit_uid.dart` 开头写的就是这一条）。中间这段空窗期正好覆盖
+        // 「切分好放人进去 → 后台打标 → 把标签合并回来」——那一步按身份
+        // 配对，源头不发身份就一个都配不上（2026-09-16）
+        uid: newUnitUid(),
         index: i,
         startMs: start,
         endMs: end,

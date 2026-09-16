@@ -24,6 +24,7 @@ import '../../core/audio/bgm_plan.dart';
 import '../../core/audio/voice_plan.dart';
 import '../../core/replacement/replacement_plan.dart';
 import 'agent_focus_request.dart';
+import 'candidate_badge.dart';
 import 'side_panel_tabs.dart';
 import 'workbench_panel_widths.dart';
 import 'segment_playback.dart';
@@ -169,7 +170,6 @@ class WorkbenchBody extends StatefulWidget {
   final Widget? candidatePanel;
 
   /// 「替换素材」tab 上的角标（已选素材数之类）
-  final String? candidateBadge;
 
   /// 时间线判定双击用的时钟（测试注入）
   final DateTime Function()? clock;
@@ -241,7 +241,6 @@ class WorkbenchBody extends StatefulWidget {
     this.baseMedia = const {},
     this.readOnly = false,
     this.candidatePanel,
-    this.candidateBadge,
     this.clock,
     this.voices = VoicePlan.empty,
     this.replacements = const [],
@@ -591,12 +590,21 @@ class _WorkbenchBodyState extends State<WorkbenchBody> {
                     width: widths.right,
                     child: Column(
                       children: [
-                        SidePanelTabBar(
-                          current: _sideTab,
-                          badges: {
-                            SidePanelTab.candidates: widget.candidateBadge,
-                          },
-                          onChanged: (t) => setState(() => _sideTab = t),
+                        // **角标跟着选中的单元走**，所以要听 editor：
+                        // 选中变化不会让外面那层重建（_onEditorChanged 是
+                        // 拖拽期间每帧都调的地方，不能在那儿 setState），
+                        // 不听的话点到哪个单元角标都不动
+                        ListenableBuilder(
+                          listenable: editor,
+                          builder: (context, _) => SidePanelTabBar(
+                            current: _sideTab,
+                            badges: {
+                              SidePanelTab.candidates: candidateBadgeText(
+                                  widget.replacements,
+                                  unitIndex: editor.selection?.unitIndex),
+                            },
+                            onChanged: (t) => setState(() => _sideTab = t),
+                          ),
                         ),
                         Expanded(
                           // 切 tab 时淡进淡出，不是硬闪一下。
