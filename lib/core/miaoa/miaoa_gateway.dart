@@ -82,9 +82,9 @@ MiaoaException miaoaExitException(
         kind: MiaoaFailureKind.forbidden);
   }
   final kind = classifyMiaoaFailure(errText);
-  // 原始报文只进日志；它可能包含访问密钥、JWT、签名 URL 或本地路径，
-  // 即使无法分类也绝不拼进实现了 UserFacingException 的 message。
-  AppLog.warn('miaoa $what 失败（exit=$exitCode，$kind）：$errText');
+  // 原始报文可能包含访问密钥、JWT、签名 URL 或本地路径。它只参与内存中的
+  // 错误分类，不进入 UI，也不写进 Windows 的持久日志。
+  AppLog.warn('miaoa $what 失败（exit=$exitCode，$kind）');
   return MiaoaException(_guidance(kind, what), kind: kind);
 }
 

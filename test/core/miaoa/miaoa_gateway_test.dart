@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/core/ffmpeg/process_runner.dart';
+import 'package:ishkafel/core/log/app_log.dart';
 import 'package:ishkafel/core/miaoa/miaoa_exception.dart';
 import 'package:ishkafel/core/miaoa/miaoa_failure.dart';
 import 'package:ishkafel/core/miaoa/miaoa_gateway.dart';
@@ -49,7 +50,11 @@ void main() {
     );
   });
 
-  test('未知退出报文只进日志，不得经白名单异常泄漏到 UI', () {
+  test('未知退出报文不得进入 UI 或持久日志', () {
+    final previousSink = AppLog.sink;
+    final logLines = <String>[];
+    AppLog.sink = logLines.add;
+    addTearDown(() => AppLog.sink = previousSink);
     final error = miaoaExitException(
       9,
       '',
@@ -65,5 +70,10 @@ void main() {
     );
     expect(error.message, isNot(contains('sk-live-xxx')));
     expect(error.message, isNot(contains('eyJhbGci')));
+    expect(logLines, hasLength(1));
+    expect(logLines.single, contains('exit=9'));
+    expect(logLines.single, contains('MiaoaFailureKind.unknown'));
+    expect(logLines.single, isNot(contains('sk-live-xxx')));
+    expect(logLines.single, isNot(contains('eyJhbGci')));
   });
 }
