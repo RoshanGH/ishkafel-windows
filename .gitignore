@@ -96,6 +96,7 @@ yarn.lock
 
 # Project-specific
 .superpowers/
+.worktrees/
 .claude/
 logs/
 coverage/
