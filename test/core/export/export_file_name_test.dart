@@ -10,8 +10,10 @@ import 'package:ishkafel/core/export/export_file_name.dart';
 /// 文件名把这个区别抹平，要回头翻 JSON 才知道哪条是哪条。
 void main() {
   test('有名字就用名字', () {
-    expect(exportFileName(name: 'A-居家写实线', index: 0, extension: 'mp4'),
-        'A-居家写实线.mp4');
+    expect(
+      exportFileName(name: 'A-居家写实线', index: 0, extension: 'mp4'),
+      'A-居家写实线.mp4',
+    );
   });
 
   test('没名字退回变体编号——界面上枚举出来的组合本来就没名字', () {
@@ -20,12 +22,16 @@ void main() {
   });
 
   test('路径分隔符和冒号要清掉——不清会写到别处去，或者根本建不出文件', () {
-    expect(exportFileName(name: 'A/B:C', index: 0, extension: 'mp4'),
-        'A-B-C.mp4');
+    expect(
+      exportFileName(name: 'A/B:C', index: 0, extension: 'mp4'),
+      'A-B-C.mp4',
+    );
     // 首尾的点也去掉：以点开头在 Finder 里是隐藏文件，
     // 人会以为片子没导出来
-    expect(exportFileName(name: '../../etc/passwd', index: 0, extension: 'mp4'),
-        'etc-passwd.mp4');
+    expect(
+      exportFileName(name: '../../etc/passwd', index: 0, extension: 'mp4'),
+      'etc-passwd.mp4',
+    );
   });
 
   test('清洗完什么都不剩，退回变体编号', () {
@@ -41,7 +47,17 @@ void main() {
   });
 
   test('换行和制表符压成空格，不留在文件名里', () {
-    expect(exportFileName(name: 'A\n线\t二', index: 0, extension: 'mp4'),
-        'A 线 二.mp4');
+    expect(
+      exportFileName(name: 'A\n线\t二', index: 0, extension: 'mp4'),
+      'A 线 二.mp4',
+    );
+  });
+
+  test('目录段覆盖 Windows 保留名、尾点和全部非法字符', () {
+    expect(safePathSegment('CON'), '_CON');
+    expect(safePathSegment('Lpt1.txt'), '_Lpt1.txt');
+    expect(safePathSegment('任务.  '), '任务');
+    expect(safePathSegment(r'A<B>|C?D*E/F\G:H"I'), 'A-B--C-D-E-F-G-H-I');
+    expect(safePathSegment('...'), '未命名');
   });
 }

@@ -7,6 +7,7 @@ import 'package:ishkafel/core/analysis/audio_extractor.dart';
 import 'package:ishkafel/core/audio/bgm_library.dart';
 import 'package:ishkafel/core/audio/bgm_plan.dart';
 import 'package:ishkafel/core/ffmpeg/thumbnail_service.dart';
+import 'package:ishkafel/core/ffmpeg/process_runner.dart';
 import 'package:ishkafel/core/models/renew_task.dart';
 import 'package:ishkafel/core/models/semantic_unit.dart';
 import 'package:ishkafel/core/models/shot.dart';
@@ -42,6 +43,22 @@ class _Library implements BgmLibrary {
   }) async => const BgmSearchPage(items: [
         BgmMaterial(id: 1, name: '轻快垫乐', durationMs: 30000, previewUrl: null),
       ]);
+
+  @override
+  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FailingLibrary implements BgmLibrary {
+  @override
+  Future<BgmSearchPage> search({
+    String? keyword,
+    List<int> projectIds = const [],
+    int page = 1,
+    int pageSize = 30,
+  }) => Future.error(const MediaToolMissingException(
+        'miaoa',
+        operatingSystem: 'windows',
+      ));
 
   @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -95,7 +112,8 @@ RenewTask _task({BgmPlan bgm = BgmPlan.empty}) => RenewTask(
       ),
     );
 
-Future<_Repo> _open(WidgetTester tester, {BgmPlan bgm = BgmPlan.empty}) async {
+Future<_Repo> _open(WidgetTester tester,
+    {BgmPlan bgm = BgmPlan.empty, BgmLibrary? library}) async {
   final repo = _Repo();
   final task = _task(bgm: bgm);
   await repo.save(task);
@@ -106,7 +124,7 @@ Future<_Repo> _open(WidgetTester tester, {BgmPlan bgm = BgmPlan.empty}) async {
   await tester.pumpWidget(ProviderScope(
     overrides: [
       taskRepositoryProvider.overrideWithValue(repo),
-      bgmLibraryProvider.overrideWithValue(_Library()),
+      bgmLibraryProvider.overrideWithValue(library ?? _Library()),
     ],
     child: MaterialApp(
       home: WorkbenchPage(
@@ -139,6 +157,16 @@ Future<void> _dragOnBgmTrack(
 }
 
 void main() {
+  testWidgets('音频库失败只显示人话，不把异常类名摊给用户', (tester) async {
+    await _open(tester, library: _FailingLibrary());
+
+    await _dragOnBgmTrack(tester, 10, 400);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('未找到 miaoa 命令行工具'), findsOneWidget);
+    expect(find.textContaining('MediaToolMissingException'), findsNothing);
+  });
+
   testWidgets('框选一段镜头 → 挑一首 → 落库', (tester) async {
     final repo = await _open(tester);
 

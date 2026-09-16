@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../platform/platform_paths.dart';
+
 /// 一个 Agent 的用户级技能目录。
 ///
 /// **用户级，不是工作目录级**：`AGENTS.md` 那类文件跟着「文件夹」走，说的是
@@ -29,8 +31,11 @@ class SkillStatus {
   /// 没装
   final List<SkillTarget> missing;
 
-  const SkillStatus(
-      {required this.installed, required this.outdated, required this.missing});
+  const SkillStatus({
+    required this.installed,
+    required this.outdated,
+    required this.missing,
+  });
 
   bool get allCurrent => missing.isEmpty && outdated.isEmpty;
   bool get anyPresent => installed.isNotEmpty || outdated.isNotEmpty;
@@ -58,27 +63,32 @@ class SkillInstaller {
   /// 当前 app 版本。写进文件里，将来能判断手上那份是不是旧的
   final String version;
 
-  const SkillInstaller(
-      {required this.targets, required this.markdown, required this.version});
+  const SkillInstaller({
+    required this.targets,
+    required this.markdown,
+    required this.version,
+  });
 
   /// 按当前用户的家目录组装默认目标
   factory SkillInstaller.forCurrentUser({
     required String markdown,
     required String version,
     String? home,
+    PlatformPaths? paths,
   }) {
-    final base = home ??
-        Platform.environment['HOME'] ??
-        Directory.current.path;
+    final base = home ?? paths?.userHome ?? PlatformPaths().userHome;
     return SkillInstaller(
       markdown: markdown,
       version: version,
       targets: [
         SkillTarget(
-            agent: 'Claude Code',
-            dir: Directory(p.join(base, '.claude', 'skills'))),
+          agent: 'Claude Code',
+          dir: Directory(p.join(base, '.claude', 'skills')),
+        ),
         SkillTarget(
-            agent: 'Codex', dir: Directory(p.join(base, '.codex', 'skills'))),
+          agent: 'Codex',
+          dir: Directory(p.join(base, '.codex', 'skills')),
+        ),
       ],
     );
   }
@@ -104,7 +114,10 @@ class SkillInstaller {
       (body.contains(_versionLine) ? installed : outdated).add(target);
     }
     return SkillStatus(
-        installed: installed, outdated: outdated, missing: missing);
+      installed: installed,
+      outdated: outdated,
+      missing: missing,
+    );
   }
 
   Future<SkillInstallResult> install() async {
@@ -121,7 +134,10 @@ class SkillInstaller {
       }
     }
     if (done.isEmpty) {
-      return SkillInstallResult(ok: false, message: '一个都没装上：${failed.join('、')}');
+      return SkillInstallResult(
+        ok: false,
+        message: '一个都没装上：${failed.join('、')}',
+      );
     }
     final note = failed.isEmpty ? '' : '；没装上：${failed.join('、')}';
     return SkillInstallResult(
@@ -171,7 +187,8 @@ class SkillInstaller {
       '也覆盖导入、语义切分与打标、挑素材、配音、断句上字幕、'
       '导出成片、写成剪映草稿这些具体做法。';
 
-  String _skillFile() => '''---
+  String _skillFile() =>
+      '''---
 name: $skillName
 description: >-
   ${describeForFrontmatter()}

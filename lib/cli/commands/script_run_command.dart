@@ -14,6 +14,7 @@ import '../../core/ai/volcano_semantic_splitter.dart';
 import '../../core/ffmpeg/process_runner.dart';
 import '../../core/models/export_record.dart';
 import '../../core/models/renew_task.dart';
+import '../../core/platform/platform_paths.dart';
 import '../../core/script/script_doc.dart';
 import '../../core/subtitle/subtitle_style.dart';
 import '../../core/script/script_export.dart';
@@ -42,6 +43,11 @@ import 'analyze_command.dart' show loadCliCredentials;
 /// 从头跑到尾，不必回头找人点界面。
 ///
 /// 每一步都上报在场状态：人在界面上看得见它在干什么。
+
+String defaultScriptExportDirectory({PlatformPaths? paths}) => p.join(
+      (paths ?? PlatformPaths()).videosDirectory,
+      'ishkafel-脚本成片',
+    );
 
 /// `ishkafel script new <名字> [--project <id>]`
 Future<int> runScriptNewCommand({
@@ -445,8 +451,7 @@ Future<int> runScriptExportCommand({
     sink.writeln('「${task.name}」不是脚本成片任务');
     return exitBadUsage;
   }
-  final dir = outputDir ??
-      p.join(Platform.environment['HOME'] ?? '.', 'Desktop', 'ishkafel-脚本成片');
+  final dir = outputDir ?? defaultScriptExportDirectory();
   final stamp = DateTime.now();
   final name = '#${task.seq ?? ''}_'
       '${stamp.month.toString().padLeft(2, '0')}'

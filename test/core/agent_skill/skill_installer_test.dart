@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/core/agent_skill/skill_installer.dart';
+import 'package:ishkafel/core/platform/platform_paths.dart';
 import 'package:path/path.dart' as p;
 
 /// 把说明书装进 Agent 的用户级技能目录。
@@ -17,17 +18,45 @@ void main() {
   tearDown(() => home.deleteSync(recursive: true));
 
   SkillInstaller make({String version = '9.9.9'}) => SkillInstaller(
-        targets: [
-          SkillTarget(
-              agent: 'Claude Code',
-              dir: Directory(p.join(home.path, '.claude', 'skills'))),
-          SkillTarget(
-              agent: 'Codex',
-              dir: Directory(p.join(home.path, '.codex', 'skills'))),
-        ],
-        markdown: '# 用法\n\n跑 ishkafel --help。\n',
-        version: version,
-      );
+    targets: [
+      SkillTarget(
+        agent: 'Claude Code',
+        dir: Directory(p.join(home.path, '.claude', 'skills')),
+      ),
+      SkillTarget(
+        agent: 'Codex',
+        dir: Directory(p.join(home.path, '.codex', 'skills')),
+      ),
+    ],
+    markdown: '# 用法\n\n跑 ishkafel --help。\n',
+    version: version,
+  );
+
+  test('Windows 默认安装到 USERPROFILE，而不是当前工作目录', () {
+    final installer = SkillInstaller.forCurrentUser(
+      markdown: '# 用法',
+      version: '1.0.0',
+      paths: PlatformPaths(
+        operatingSystem: 'windows',
+        environment: const {
+          'USERPROFILE': r'D:\用户\阿明',
+          'APPDATA': r'D:\应用数据',
+          'LOCALAPPDATA': r'D:\本地应用数据',
+          'TEMP': r'D:\临时',
+        },
+        windowsKnownFolder: (_) => null,
+      ),
+    );
+
+    expect(
+      installer.targets.first.dir.path,
+      p.join(r'D:\用户\阿明', '.claude', 'skills'),
+    );
+    expect(
+      installer.targets.last.dir.path,
+      p.join(r'D:\用户\阿明', '.codex', 'skills'),
+    );
+  });
 
   File written(String agentDir) =>
       File(p.join(home.path, agentDir, 'skills', 'ishkafel', 'SKILL.md'));

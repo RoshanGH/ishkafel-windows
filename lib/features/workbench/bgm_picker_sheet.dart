@@ -8,6 +8,9 @@ import '../../app/theme/app_spacing.dart';
 import '../../app/theme/app_typography.dart';
 import '../../core/audio/bgm_library.dart';
 import '../../core/audio/bgm_plan.dart';
+import '../../core/ffmpeg/process_runner.dart';
+import '../../core/log/app_log.dart';
+import '../../core/miaoa/miaoa_exception.dart';
 import 'bgm_audition.dart';
 
 /// 音频库检索入口（缺省走真实 miaoa CLI；测试注入假实现）
@@ -258,8 +261,12 @@ class _BgmPickerDialogState extends ConsumerState<_BgmPickerDialog> {
       setState(() => _page = page);
     } catch (e) {
       if (!mounted || generation != _generation) return;
-      // e 已是人话（网关统一翻译过）
-      setState(() => _error = '$e');
+      AppLog.warn('音频库检索失败：$e');
+      setState(() => _error = switch (e) {
+            MediaToolMissingException(:final message) => message,
+            MiaoaException(:final message) => message,
+            _ => '音频库检索失败，请稍后重试；若反复出现，请把日志提供给维护者。',
+          });
     }
   }
 

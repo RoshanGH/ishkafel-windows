@@ -20,6 +20,7 @@ import '../../core/analysis/handpicked_tags.dart';
 import '../../core/subtitle/subtitle_track.dart';
 import '../../core/subtitle/preview_subtitle_at.dart';
 import '../../core/export/composed_timeline.dart';
+import '../../core/export/export_file_name.dart';
 import '../../core/subtitle/slot_subtitles.dart';
 import '../../core/subtitle/subtitle_overlay.dart';
 import '../../core/editing/edit_locks.dart';
@@ -41,6 +42,7 @@ import '../../core/audio/voice_swap_service.dart';
 import '../../core/log/app_log.dart';
 import '../../core/models/export_record.dart';
 import '../../core/models/renew_task.dart';
+import '../../core/platform/platform_paths.dart';
 import '../../core/net/http_bytes.dart';
 import '../../core/miaoa/candidate_probe.dart';
 import '../../core/miaoa/miaoa_content_service.dart';
@@ -2640,9 +2642,8 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     if (editor == null) return;
     // 成片放到「影片」目录下按任务分文件夹：跟原片、跟缓存都分开，
     // 用户拿完就走，不必在应用数据目录里翻
-    final home = Platform.environment['HOME'] ?? '.';
-    final outputDir = Directory(p.join(home, 'Movies', 'ishkafel',
-        _safeName('${_task.name}_${_task.id}')));
+    final outputDir = Directory(p.join(PlatformPaths().videosDirectory, 'ishkafel',
+        safePathSegment('${_task.name}_${_task.id}')));
     await showExportDialog(
       context,
       taskId: _task.id,
@@ -2706,15 +2707,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   Directory? _lastUsableExportDir() {
     if (_task.exports.isEmpty) return null;
     final last = _task.exports.last.outputDir;
-    if (last.startsWith('/tmp/') || last.startsWith('/private/tmp/')) {
-      return null;
-    }
+    if (PlatformPaths().isTemporaryPath(last)) return null;
     final dir = Directory(last);
     return dir.existsSync() ? dir : null;
   }
-
-  static String _safeName(String name) =>
-      name.replaceAll(RegExp(r'[/:\\]'), '_');
 
   /// 保存类操作失败的统一用户提示：说清做什么失败了与可能的原因，
   /// 不把原始异常文本摊给用户（详情已进日志）。

@@ -70,6 +70,8 @@ Future<void> main(List<String> args) async {
   installFlutterErrorForwarding();
   MediaKit.ensureInitialized();
   final supportDir = await getApplicationSupportDirectory();
+  AppLog.startFileLogging(Directory(p.join(supportDir.path, 'logs')));
+  AppLog.info('应用启动；日志目录：${p.join(supportDir.path, 'logs')}');
   final dataDir = Directory(p.join(supportDir.path, 'ishkafel_data'));
   final repository = FileTaskRepository(dataDir);
   final coversDir = Directory(p.join(dataDir.path, 'covers'));

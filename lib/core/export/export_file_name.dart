@@ -14,6 +14,30 @@ final _spaces = RegExp(r'\s+');
 /// 取 60 个字符是安全的，也没人真需要更长的方案名
 const int _maxNameLength = 60;
 
+final _windowsReservedName = RegExp(
+  r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)',
+  caseSensitive: false,
+);
+
+/// 清洗一个可安全用作目录或文件名主体的路径段。
+///
+/// 除了通用非法字符，还处理 Windows 的设备保留名与尾随点/空格；后两者会让
+/// `Directory.create` 失败，或创建出的名字与界面显示不一致。
+String safePathSegment(String name, {String fallback = '未命名'}) {
+  var cleaned = name
+      .replaceAll(_spaces, ' ')
+      .replaceAll(_illegal, '-')
+      .replaceAll(RegExp(r'^[.\-\s]+|[.\s]+$'), '')
+      .trim();
+  if (cleaned.isEmpty) return fallback;
+  if (_windowsReservedName.hasMatch(cleaned)) cleaned = '_$cleaned';
+  if (cleaned.length > _maxNameLength) {
+    cleaned = cleaned.substring(0, _maxNameLength).trimRight();
+    cleaned = cleaned.replaceAll(RegExp(r'[.\s]+$'), '');
+  }
+  return cleaned.isEmpty ? fallback : cleaned;
+}
+
 /// 拼出成片文件名。[name] 为空或清洗后什么都不剩时退回「变体N」——
 /// 界面上枚举出来的组合本来就没有名字
 String exportFileName({

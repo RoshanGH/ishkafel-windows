@@ -18,6 +18,7 @@ import '../../core/ffmpeg/process_runner.dart';
 import '../../core/miaoa/material_downloader.dart';
 import '../../core/miaoa/miaoa_content_service.dart';
 import '../../core/models/export_record.dart';
+import '../../core/platform/platform_paths.dart';
 import '../../core/storage/file_task_repository.dart';
 import '../../core/storage/agent_presence.dart';
 import '../../core/storage/task_lock.dart';
@@ -35,6 +36,12 @@ import 'apply_command.dart';
 ///
 /// **先说代价、但不设闸门**：会导几条、大概多久，如实输出；要不要继续是
 /// 调用方的判断——我是工具，你来调用我（spec 第一节）。
+Directory defaultExportDirectory(String taskId, {PlatformPaths? paths}) =>
+    Directory(p.join(
+      (paths ?? PlatformPaths()).videosDirectory,
+      'ishkafel-$taskId',
+    ));
+
 Future<int> runExportCommand({
   required List<String> rest,
   required Directory dataDir,
@@ -112,9 +119,8 @@ Future<int> runExportCommand({
   }
 
 
-  final dest = Directory(outputDir ??
-      p.join(Platform.environment['HOME'] ?? '.', 'Desktop',
-          'ishkafel-${task.id}'));
+  final dest =
+      outputDir == null ? defaultExportDirectory(task.id) : Directory(outputDir);
   // 素材时长：镜头层算倍速要靠它。任务里存过的直接用，没存过的这一步
   // 不去探（探一遍要几分钟）——导出那头会就地探本地文件，照样算得出
   final materialDurations = {

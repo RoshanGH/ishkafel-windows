@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
+
+import 'package:path/path.dart' as p;
 
 import '../subtitle/subtitle_style.dart';
 import 'jianying_plan.dart';
@@ -18,6 +21,75 @@ import 'jianying_plan.dart';
 
 /// 毫秒 → 微秒
 int _us(int ms) => ms * 1000;
+
+/// 剪映草稿里会落盘的平台字段与平台路径。
+///
+/// 这不是界面层的系统判断，而是草稿文件格式的一部分；集中在一个值对象里，
+/// 防止同一份 JSON 一半是 Windows、一半还残留 macOS。
+class JianyingDraftPlatform {
+  final String operatingSystem;
+  final String osVersion;
+  final String appVersion;
+  final String windowsDirectory;
+
+  const JianyingDraftPlatform.windows({
+    required this.osVersion,
+    required this.appVersion,
+    this.windowsDirectory = r'C:\Windows',
+  }) : operatingSystem = 'windows';
+
+  const JianyingDraftPlatform.macos({
+    required this.osVersion,
+    required this.appVersion,
+  })  : operatingSystem = 'macos',
+        windowsDirectory = '';
+
+  factory JianyingDraftPlatform.current({
+    String? operatingSystem,
+    String? osVersion,
+    Map<String, String>? environment,
+  }) {
+    final os = operatingSystem ?? Platform.operatingSystem;
+    final env = environment ?? Platform.environment;
+    final version = env['ISHKAFEL_JIANYING_VERSION']?.trim();
+    if (os == 'windows') {
+      return JianyingDraftPlatform.windows(
+        osVersion: osVersion ?? Platform.operatingSystemVersion,
+        appVersion: version == null || version.isEmpty ? '11.1.0' : version,
+        windowsDirectory: env['WINDIR']?.trim().isNotEmpty == true
+            ? env['WINDIR']!.trim()
+            : r'C:\Windows',
+      );
+    }
+    return JianyingDraftPlatform.macos(
+      osVersion: osVersion ?? Platform.operatingSystemVersion,
+      appVersion: version == null || version.isEmpty ? '11.1.0' : version,
+    );
+  }
+
+  p.Context get _paths => p.Context(
+        style: operatingSystem == 'windows' ? p.Style.windows : p.Style.posix,
+      );
+
+  String basename(String path) => _paths.basename(path);
+  String join(String left, String right) => _paths.join(left, right);
+
+  String get fontPath => operatingSystem == 'windows'
+      ? _paths.join(windowsDirectory, 'Fonts', 'msyh.ttc')
+      : '/Applications/VideoFusion-macOS.app/Contents/Resources/Font/'
+          'SystemFont/zh-hans.ttf';
+
+  Map<String, dynamic> get json => {
+        'os': operatingSystem == 'windows' ? 'windows' : 'mac',
+        'os_version': osVersion,
+        'app_id': 3704,
+        'app_version': appVersion,
+        'app_source': 'lv',
+        'device_id': '',
+        'hard_disk_id': '',
+        'mac_address': '',
+      };
+}
 
 /// 生成剪映风格的大写 UUID
 class _Ids {
@@ -83,7 +155,9 @@ JianyingDraftJson buildDraftJson({
   int fps = 30,
   int nowSeconds = 0,
   int seed = 20260826,
+  JianyingDraftPlatform? targetPlatform,
 }) {
+  final draftPlatform = targetPlatform ?? JianyingDraftPlatform.current();
   final ids = _Ids(seed);
   final draftId = ids.next();
   final notes = <String>[];
@@ -164,7 +238,7 @@ JianyingDraftJson buildDraftJson({
       'id': mid,
       'type': 'video',
       'path': path,
-      'material_name': path.split('/').last,
+      'material_name': draftPlatform.basename(path),
       'duration': _us(total),
       'width': width,
       'height': height,
@@ -241,7 +315,7 @@ JianyingDraftJson buildDraftJson({
           ? total - s.sourceStartMs
           : s.durationMs;
       if (take < s.durationMs) {
-        notes.add('《${path.split('/').last}》只有 ${(take / 1000).toStringAsFixed(1)} 秒，'
+        notes.add('《${draftPlatform.basename(path)}》只有 ${(take / 1000).toStringAsFixed(1)} 秒，'
             '铺不满 ${(s.durationMs / 1000).toStringAsFixed(1)} 秒的区间，'
             '草稿里这一段末尾会没有声音');
       }
@@ -293,7 +367,7 @@ JianyingDraftJson buildDraftJson({
               }
             }
           },
-          'font': {'id': '', 'path': _systemFont},
+          'font': {'id': '', 'path': draftPlatform.fontPath},
           'range': [0, s.text.length],
           'shadows': <dynamic>[],
           'size': _fontSize(subtitle.fontRatio),
@@ -330,7 +404,7 @@ JianyingDraftJson buildDraftJson({
       'border_width': strokePercent / 100,
       'text_color': _hex(r, g, b),
       'font_size': _fontSize(subtitle.fontRatio),
-      'font_path': _systemFont,
+      'font_path': draftPlatform.fontPath,
       'initial_scale': 1,
       'lyrics_template': {'resource_id': '', 'path': ''},
       'recognize_task_id': '',
@@ -382,16 +456,7 @@ JianyingDraftJson buildDraftJson({
     if (bgmSegs.isNotEmpty) track('audio', bgmSegs),
   ];
 
-  const platform = {
-    'os': 'mac',
-    'os_version': '15.3',
-    'app_id': 3704,
-    'app_version': '11.1.0',
-    'app_source': 'lv',
-    'device_id': '',
-    'hard_disk_id': '',
-    'mac_address': '',
-  };
+  final platform = draftPlatform.json;
 
   final info = <String, dynamic>{
     'id': draftId,
@@ -487,7 +552,7 @@ JianyingDraftJson buildDraftJson({
     'draft_name': draftName,
     'draft_fold_path': draftFolder,
     'draft_root_path': draftRoot,
-    'draft_cover': '$draftFolder/draft_cover.jpg',
+    'draft_cover': draftPlatform.join(draftFolder, 'draft_cover.jpg'),
     'tm_duration': _us(plan.totalMs),
     'tm_draft_create': nowSeconds * 1000000,
     'tm_draft_modified': nowSeconds * 1000000,
@@ -503,7 +568,7 @@ JianyingDraftJson buildDraftJson({
               'create_time': nowSeconds,
               'duration': _us(e.durationMs),
               'enter_from': 0,
-              'extra_info': e.path.split('/').last,
+              'extra_info': draftPlatform.basename(e.path),
               'file_Path': e.path,
               'height': e.height,
               'width': e.width,
@@ -549,9 +614,6 @@ JianyingDraftJson buildDraftJson({
   return JianyingDraftJson(
       info: info, meta: meta, draftId: draftId, notes: notes);
 }
-
-const _systemFont =
-    '/Applications/VideoFusion-macOS.app/Contents/Resources/Font/SystemFont/zh-hans.ttf';
 
 /// 字色：自定义色优先，其次预设自己的颜色（与 `subtitle_rasterizer` 同一套）
 (double, double, double) _subtitleColor(SubtitleStyle style) {
