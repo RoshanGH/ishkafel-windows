@@ -13,6 +13,15 @@ bool artifactBelongsTo(String name, String taskId) =>
     name.startsWith('$taskId.') ||
     name.startsWith('${taskId}_');
 
+/// 一个**单元**在磁盘上会留下什么（按它的身份命名的那些）。
+///
+/// 固定底片的单元会各自抽一份缩略图、算一份波形、留下切点检测的中转文件，
+/// 全都以 `<taskId>_u<uid>` 开头。删任务时它们跟着走（前缀仍是 taskId），
+/// 但**换底片、删这个单元**时任务还在——不单独清一道，那几份就永远躺在
+/// 盘上没人读。反复试几次底片就是几十兆（2026-09-15 清点时发现）。
+bool unitArtifactBelongsTo(String name, String taskId, String unitUid) =>
+    unitUid.isNotEmpty && name.startsWith('${taskId}_u$unitUid');
+
 /// **一条任务在磁盘上会留下什么——唯一的一份清单。**
 ///
 /// 为什么要有这个类：产物散在七八个目录里，删任务的清理器、设置页的「可回收
@@ -129,6 +138,15 @@ class TaskArtifacts {
         for (final name in perTaskDirNames)
           Directory(p.join(dataDir.path, name, taskId)),
       ].where((e) => e.existsSync()).toList();
+
+  /// 这个单元名下的产物（缩略图、波形、切点检测的中转）。
+  ///
+  /// 换底片、删单元时清它：那几份是按这张底片抽的，换一张就全不作数了
+  List<FileSystemEntity> ofUnit(String taskId, String unitUid) =>
+      _workEntities()
+          .where((e) =>
+              unitArtifactBelongsTo(p.basename(e.path), taskId, unitUid))
+          .toList();
 
   /// 「用完即弃」的中转文件——**不管属于哪条任务，一律该删**。
   ///

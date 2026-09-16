@@ -12,6 +12,7 @@ library;
 
 import '../models/renew_task.dart';
 import '../models/semantic_unit.dart';
+import '../replacement/unit_base.dart';
 import '../models/shot.dart';
 
 /// 这一镜被看过了吗
@@ -39,12 +40,16 @@ Set<int> unitsPendingTagging(RenewTask task) {
       // 而不是「还没打」。分不清的话后台会默默补一份回去，把他刚做的判断
       // 盖掉——他看不见这一步，只会觉得改了没生效
       //
-      // **手加的单元也一律跳过**：原片里没有它，它没有台词、没有镜头、
+      // **手加的单元一律跳过**：原片里没有它，它没有台词、没有镜头、
       // 也没有画面，模型没有任何东西可以据以打标——排进去只会每打开一次
       // 任务就白烧一次 AI 调用，返回的还永远是空（2026-09-08 真机上，
       // 一条任务的 U1 就这么被反复打了好几轮）。它的标签本来就是人手填的，
       // 见 withHandpickedTags
-      if (units[i].hasSource &&
+      //
+      // **固定过底片的除外**：那条素材转写过、切成了镜头、每一镜都有画面
+      // ——模型该看的东西一样不缺。它就是「参考视频里的一段」，
+      // 补打标这条路也得一视同仁（产品负责人：「该走的流程全部走完」）
+      if ((units[i].hasSource || hasOwnBaseShots(units[i])) &&
           !units[i].tagsHandpicked &&
           (units[i].shots.isEmpty
               ? units[i].tags.isEmpty

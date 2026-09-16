@@ -68,7 +68,9 @@ class RetaggingBanner extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text('正在为 $unitCount 个台词语义单元重新打标，可以继续编辑',
+              child: Text(
+                  '正在为 $unitCount 个台词语义单元重新打标。'
+                  '画面现在就能预览，打标只影响「按标签/画面搜素材」',
                   style: const TextStyle(
                       color: AppColors.accentBlueLight,
                       fontSize: AppFontSize.body,

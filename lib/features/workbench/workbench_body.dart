@@ -156,6 +156,10 @@ class WorkbenchBody extends StatefulWidget {
   final TimelineMediaStatus? thumbStatus;
   final TimelineMediaStatus? waveStatus;
 
+  /// 底片固定过的单元各自的画面与波形（单元 uid → 那条素材的）。
+  /// 那几段的画面来自素材，原片那份缩略图里根本没有它们
+  final Map<String, TimelineMedia> baseMedia;
+
   /// 只读回看模式（评审 Important 1）：picking/exported 状态下已确认的
   /// 切分结构不允许再被静默改写，下发到 [TimelineView]/[InspectorPanel]。
   final bool readOnly;
@@ -234,6 +238,7 @@ class WorkbenchBody extends StatefulWidget {
     this.mediaStatus = TimelineMediaStatus.ready,
     this.thumbStatus,
     this.waveStatus,
+    this.baseMedia = const {},
     this.readOnly = false,
     this.candidatePanel,
     this.candidateBadge,
@@ -786,6 +791,7 @@ class _WorkbenchBodyState extends State<WorkbenchBody> {
                   mediaStatus: widget.mediaStatus,
                   thumbStatus: widget.thumbStatus,
                   waveStatus: widget.waveStatus,
+                  baseMedia: widget.baseMedia,
                   onSeek: (ms) {
                     // 用户自己定位了，上一段的「播到这儿停」约束随即作废
                     unawaited(_segment.cancel());

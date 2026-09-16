@@ -76,4 +76,51 @@ void main() {
     expect(needsTagging(task(null)), isFalse);
     expect(needsTagging(task(const [])), isFalse);
   });
+
+  group('固定过底片的单元，补打标一视同仁', () {
+    SemanticUnit pinned({List<String> tags = const []}) => SemanticUnit(
+          uid: 'b',
+          index: 1,
+          startMs: 10000,
+          endMs: 16300,
+          transcript: '底片转出来的话',
+          tags: tags,
+          hasSource: false,
+          baseCandidateId: 7,
+          shots: const [
+            Shot(startMs: 10000, endMs: 13000),
+            Shot(startMs: 13000, endMs: 16300),
+          ],
+        );
+
+    test('切了底片、镜头还没打标：要排进去', () {
+      expect(unitsPendingTagging(task([unit(const []), pinned()])), contains(1),
+          reason: '那条素材转写过、切成了镜头、每一镜都有画面——'
+              '模型该看的一样不缺，它就是「参考视频里的一段」');
+    });
+
+    test('没固定底片的手加单元照旧跳过——模型没东西可看', () {
+      const bare = SemanticUnit(
+          uid: 'c',
+          index: 1,
+          startMs: 10000,
+          endMs: 20000,
+          transcript: '',
+          hasSource: false);
+
+      expect(unitsPendingTagging(task([unit(const [], tags: ['促单']), bare])),
+          isEmpty,
+          reason: '排进去只会每打开一次任务就白烧一次 AI 调用');
+    });
+
+    test('人手填过标签的还是跳过——不能把他的结论盖掉', () {
+      final handpicked = pinned(tags: const ['促单'])
+          .copyWith(tagsHandpicked: true);
+
+      expect(
+          unitsPendingTagging(
+              task([unit(const [], tags: ['促单']), handpicked])),
+          isEmpty);
+    });
+  });
 }

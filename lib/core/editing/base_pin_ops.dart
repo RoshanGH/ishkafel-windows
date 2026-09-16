@@ -1,3 +1,4 @@
+import '../analysis/providers.dart' show AsrSentence;
 import '../models/semantic_unit.dart';
 import '../models/shot.dart';
 import '../replacement/replacement_plan.dart';
@@ -67,6 +68,9 @@ abstract final class BasePinOps {
     int index, {
     required int candidateId,
     required List<Shot> shots,
+
+    /// 这条底片素材自己的转写（字幕从它取）。null = 没转成，那一段没字幕
+    List<AsrSentence>? sentences,
   }) {
     if (index < 0 || index >= units.length) return (units, replacements);
     final nextUnits = [
@@ -74,6 +78,14 @@ abstract final class BasePinOps {
         if (i == index)
           units[i].copyWith(
             baseCandidateId: candidateId,
+            baseSentences: sentences,
+            // **台词也要落下来**：左栏卡片、时间线块、属性面板的台词框读的
+            // 都是它，不写的话人看到的是三处空白——而这一段明明有人在说话
+            // （2026-09-15 真机：「对应这些地方的信息也要都能补齐」）。
+            //
+            // 人手改过就不动他的：模型转出来的只是个起点，他改完不该被
+            // 下一次切分悄悄盖掉
+            transcript: _transcriptOf(units[i], sentences),
             shots: List.unmodifiable(shots),
             // 镜头是新切的，标签还没打——标成过期，重新打标会把它们捡起来
             tagsStale: true,
@@ -82,6 +94,15 @@ abstract final class BasePinOps {
           units[i],
     ];
     return (nextUnits, _onlyThisCandidate(replacements, index, candidateId));
+  }
+
+  /// 转写出来的台词接成一句。
+  ///
+  /// 人已经手填过的就保留——那是他自己写的，模型这一份只是个起点
+  static String _transcriptOf(SemanticUnit unit, List<AsrSentence>? sentences) {
+    if (unit.transcript.trim().isNotEmpty) return unit.transcript;
+    if (sentences == null || sentences.isEmpty) return unit.transcript;
+    return sentences.map((s) => s.text).join();
   }
 
   /// 换底片：先把旧底片切出来的镜头和挂在上面的选择全清掉。
@@ -104,7 +125,11 @@ abstract final class BasePinOps {
             ...units[i].toJson(),
             'baseCandidateId': null,
             'shots': const <Map<String, dynamic>>[],
-          }..remove('baseCandidateId'))
+          }
+            ..remove('baseCandidateId')
+            ..remove('baseSentences')
+            // 台词是从那张底片转出来的，底片没了它也就不成立
+            ..['transcript'] = '')
         else
           units[i],
     ];

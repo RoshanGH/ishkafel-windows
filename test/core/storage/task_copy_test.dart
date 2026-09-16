@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ishkafel/core/analysis/providers.dart' show AsrSentence;
 import 'package:ishkafel/core/ai/ai_usage.dart';
 import 'package:ishkafel/core/audio/bgm_plan.dart';
 import 'package:ishkafel/core/models/export_record.dart';
@@ -247,6 +248,37 @@ void main() {
       expect(copiedTaskName('片子', []), '片子 的副本');
       expect(copiedTaskName('片子', ['片子 的副本']), '片子 的副本 2');
       expect(copiedTaskName('片子', ['片子 的副本', '片子 的副本 2']), '片子 的副本 3');
+    });
+  });
+
+  group('固定过底片的单元，复制之后一样不少', () {
+    test('底片、转写、台词、镜头全带过去', () async {
+      final src = source().copyWith(units: [
+        const SemanticUnit(
+          uid: 'ua',
+          index: 0,
+          startMs: 0,
+          endMs: 16300,
+          transcript: '底片转出来的话',
+          hasSource: false,
+          baseCandidateId: 7,
+          baseSentences: [
+            AsrSentence(startMs: 40, endMs: 3320, text: '底片转出来的话', words: []),
+          ],
+          shots: [
+            Shot(startMs: 0, endMs: 8000),
+            Shot(startMs: 8000, endMs: 16300),
+          ],
+        ),
+      ]);
+      final copy = await copier.duplicate(src,
+          newId: 'c1', seq: 2, now: DateTime.utc(2026, 9, 15));
+      final u = copy.units!.first;
+
+      expect(u.baseCandidateId, 7, reason: '不带的话副本那一段就没画面了');
+      expect(u.baseSentences, hasLength(1), reason: '不带就没字幕');
+      expect(u.transcript, '底片转出来的话');
+      expect(u.shots, hasLength(2));
     });
   });
 }

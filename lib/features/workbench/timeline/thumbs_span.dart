@@ -1,4 +1,5 @@
 import '../../../core/models/semantic_unit.dart';
+import '../../../core/replacement/unit_base.dart';
 
 /// 胶片条（画面缩略图轨）铺在**原片**上覆盖多长。
 ///
@@ -49,6 +50,10 @@ List<ThumbCell> thumbCells({
   for (var u = 0; u < units.length; u++) {
     final unit = units[u];
     if (!unit.hasSource) continue;
+    // 固定过底片的那一段画面来自另一条素材，原片同一个时间点的缩略图
+    // 跟它毫不相干——那儿由底片自己的缩略图铺（见 `baseThumbImages`），
+    // 两份一起画就是叠着两段不同的画面
+    if (hasOwnBaseShots(unit)) continue;
     final srcStart = unit.startMs;
     final srcLen = unit.endMs - unit.startMs;
     if (srcLen <= 0) continue;

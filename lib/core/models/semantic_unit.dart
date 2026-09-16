@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import '../audio/material_audio.dart';
+import '../analysis/providers.dart' show AsrSentence;
 import 'shot.dart';
 import 'tag_trace.dart';
 import 'unit_uid.dart';
@@ -67,6 +68,15 @@ class SemanticUnit {
   /// 另一条素材的时间点，画面全错而哪儿都不报错。
   final int? baseCandidateId;
 
+  /// **底片素材自己的转写**（时间戳是素材内毫秒，不是原片轴）。
+  ///
+  /// 底片换成一条素材之后，原片那份 ASR 跟这段画面毫无关系——拿它取词，
+  /// 烧上去的台词和画面对不上。所以切分底片时顺手把这条素材也转写一遍，
+  /// 字幕从这一份取（见 `docs/superpowers/specs/2026-09-14-底片-design.md`）。
+  ///
+  /// null = 还没转写过（老存档、或转写失败）。空列表 = 转过、这条素材没人说话
+  final List<AsrSentence>? baseSentences;
+
   /// 这个单元在**原片上有没有对应的一段**。
   ///
   /// 默认 true——分析切出来的单元都取自原片。false 只出现在用户**手动加**
@@ -89,6 +99,7 @@ class SemanticUnit {
     this.trace,
     this.shots = const [],
     this.baseCandidateId,
+    this.baseSentences,
     this.hasSource = true,
     this.wholeAudioMode,
     this.wholeAudioVolume,
@@ -112,6 +123,7 @@ class SemanticUnit {
     TagTrace? trace,
     List<Shot>? shots,
     int? baseCandidateId,
+    List<AsrSentence>? baseSentences,
     bool? hasSource,
     MaterialAudioMode? wholeAudioMode,
     double? wholeAudioVolume,
@@ -128,6 +140,7 @@ class SemanticUnit {
         trace: trace ?? this.trace,
         shots: shots ?? this.shots,
         baseCandidateId: baseCandidateId ?? this.baseCandidateId,
+        baseSentences: baseSentences ?? this.baseSentences,
         hasSource: hasSource ?? this.hasSource,
         wholeAudioMode: wholeAudioMode ?? this.wholeAudioMode,
         wholeAudioVolume: wholeAudioVolume ?? this.wholeAudioVolume,
@@ -148,6 +161,8 @@ class SemanticUnit {
         'hasSource': hasSource,
         // 只在固定过底片时才写：null 和「按原片切的」是同一件事
         if (baseCandidateId != null) 'baseCandidateId': baseCandidateId,
+        if (baseSentences != null)
+          'baseSentences': [for (final s in baseSentences!) s.toJson()],
         // 只在设过时才写：没设过和「明确设成原声」在存档里要分得开
         if (wholeAudioMode != null) 'wholeAudioMode': wholeAudioMode!.name,
         if (wholeAudioVolume != null) 'wholeAudioVolume': wholeAudioVolume,
@@ -173,6 +188,9 @@ class SemanticUnit {
         trace: TagTrace.tryFromJson(json['trace']),
         // 存量存档里没有这个字段——那时的镜头都是按原片切的
         baseCandidateId: json['baseCandidateId'] as int?,
+        baseSentences: (json['baseSentences'] as List<dynamic>?)
+            ?.map((e) => AsrSentence.fromJson(e as Map<String, dynamic>))
+            .toList(),
         // 存量存档里没有这个字段——它们的单元都是分析切出来的，都有原片来源。
         // 缺失时必须兜底为 true，兜成 false 会让老任务整条以为原片不见了
         hasSource: json['hasSource'] != false,

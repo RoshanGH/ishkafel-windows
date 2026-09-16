@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ishkafel/core/analysis/providers.dart' show AsrSentence, AsrWord;
 import 'package:ishkafel/core/models/semantic_unit.dart';
 import 'package:ishkafel/core/models/shot.dart';
 
@@ -139,6 +140,56 @@ void main() {
 
       expect(a == b, isFalse);
       expect(a.hashCode == b.hashCode, isFalse);
+    });
+  });
+
+  group('底片自己的转写', () {
+    test('存档往返带得住——字幕靠它取词', () {
+      const unit = SemanticUnit(
+        uid: 'u1',
+        index: 1,
+        startMs: 4000,
+        endMs: 10000,
+        transcript: '',
+        hasSource: false,
+        baseCandidateId: 7,
+        baseSentences: [
+          AsrSentence(startMs: 500, endMs: 2200, text: '素材里说的话', words: [
+            AsrWord(startMs: 500, endMs: 1300, text: '素材里'),
+          ]),
+        ],
+      );
+
+      final back = SemanticUnit.fromJson(unit.toJson());
+
+      expect(back.baseSentences, hasLength(1));
+      expect(back.baseSentences!.first.text, '素材里说的话');
+      expect(back.baseSentences!.first.words, hasLength(1),
+          reason: '词级时间戳是字幕的全部依据，掉了就只能整句一屏');
+    });
+
+    test('没转写过就不写进存档：null 和「转过但没人说话」要分得开', () {
+      const unit = SemanticUnit(
+          index: 0, startMs: 0, endMs: 4000, transcript: '一句台词');
+
+      expect(unit.toJson().containsKey('baseSentences'), isFalse);
+    });
+
+    test('转过、这条素材没人说话：空列表要存下来', () {
+      const unit = SemanticUnit(
+          index: 0,
+          startMs: 0,
+          endMs: 4000,
+          transcript: '',
+          baseCandidateId: 7,
+          baseSentences: []);
+
+      final back = SemanticUnit.fromJson(unit.toJson());
+
+      expect(back.baseSentences, isNotNull,
+          reason: '「转过、没人说话」不该退化成「还没转过」——'
+              '前者不必重转，后者还能再试一次');
+      expect(back.baseSentences, isEmpty);
     });
   });
 }

@@ -256,6 +256,9 @@ ishkafel unit unpin <task> --unit 1       # 换一张底片（旧的镜头全部
 | `shots` | 切出来几个镜头 |
 | `canSegment` | 能不能切；不能时看 `blockedReason` |
 | `segmentWouldDrop` | 切下去会掉什么：`otherCandidates`（多余的候选）、`shotPicks`（已挑的镜头替换） |
+| `shotsTagged` | 这几镜里打过标的有几个。**没打就别急着按标签/画面搜**——检索键就是它们 |
+| `baseSentenceCount` | 底片转写出几句（字幕从这一份取）。null = 还没转过，0 = 转过、这条素材没人说话 |
+| `transcript` | 这一段的台词（转写接起来的）。它也是单元层打标的输入 |
 
 三条要记住的规则：
 
@@ -267,8 +270,9 @@ ishkafel unit unpin <task> --unit 1       # 换一张底片（旧的镜头全部
   一层底片 + 一层镜头，就这两层
 
 切开之后这一段就是普通的镜头级替换：`candidates --unit 1 --shot 2`、
-`plan` 里给 `perShot`，和有原片的任务完全一样。**这一段不带台词字幕**
-（时长跟素材走、和原坑位对不齐），要字幕用 `unit subtitle` 自己排时间。
+`plan` 里给 `perShot`，和有原片的任务完全一样。**字幕也有**——取自底片素材
+自己的转写，坑位按素材内偏移算；某一镜里没转出话来（本来没人说、或者转写
+没成）就是没有，那时用 `unit subtitle` 自己排。
 
 **删任务**（不可逆，连素材、配音、预览产物一起走）：
 

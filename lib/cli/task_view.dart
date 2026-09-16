@@ -191,6 +191,11 @@ Map<String, dynamic> _unitToJson(
       // 已经切过、每一镜都能单独挑素材
       if (unit.baseCandidateId != null)
         'baseCandidateId': unit.baseCandidateId,
+      // 底片素材自己的转写转出来几句。**字幕从这一份取**（原片那份量的是
+      // 原片、跟这段画面对不上）。不报的话你会以为字幕是从原片台词来的，
+      // 也不知道这一段转没转成
+      if (unit.baseSentences != null)
+        'baseSentenceCount': unit.baseSentences!.length,
       'tags': unit.tags,
       // 人手改过的标签：重新打标会跳过它。不报的话你会以为打标漏了这个单元，
       // 跑一遍发现它纹丝不动，也不知道为什么
