@@ -65,11 +65,11 @@
 
 **Interfaces:**
 - Consumes: `.secrets/windows_update_signing_private_key` and `.secrets/windows_update_signing_public_key` as Base64 raw Ed25519 keys.
-- Produces: signed `windows/latest.json` plus transitional `latest-windows.json`.
+- Produces: signed `windows/latest.json`; legacy `latest-windows.json` is opt-in for Authenticode-signed packages only.
 
 - [ ] **Step 1: Write failing architecture tests** for public-key-only build injection, private-key-only publisher access, signed manifest generation, and package-first/manifest-last ordering.
 - [ ] **Step 2: Run** the architecture test and confirm expected failures.
-- [ ] **Step 3: Implement** idempotent key generation, public-key build injection, package directory argument support, and dual-manifest publication.
+- [ ] **Step 3: Implement** idempotent key generation, public-key build injection, package directory argument support, stable-manifest publication, and an explicit legacy-channel opt-in.
 - [ ] **Step 4: Run** focused tests and a local dry-run signing round trip with a temporary keypair.
 - [ ] **Step 5: Commit** release tooling.
 

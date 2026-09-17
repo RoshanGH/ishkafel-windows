@@ -61,10 +61,12 @@ void main() {
     expect(publisher, contains('signature:'));
   });
 
-  test('发布先传版本包，再写稳定清单和旧版兼容清单', () {
+  test('发布先传版本包再写稳定清单；旧版清单必须显式开启', () {
     final publisher = File('tool/publish_release.dart').readAsStringSync();
     expect(publisher, contains("'windows/latest.json'"));
     expect(publisher, contains("'latest-windows.json'"));
+    expect(publisher, contains("args.contains('--publish-legacy-manifest')"));
+    expect(publisher, contains('if (publishLegacyManifest)'));
     expect(publisher, contains('--package-dir'));
     expect(
       publisher.indexOf("contentType: 'application/zip'"),

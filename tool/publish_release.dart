@@ -25,6 +25,7 @@ Future<int> main(List<String> args) async {
     _valueAfter(args, '--secrets-dir') ?? '.secrets',
   );
   final dryRun = args.contains('--dry-run');
+  final publishLegacyManifest = args.contains('--publish-legacy-manifest');
   final version = _appVersion();
   final archiveName = 'ishkafel-windows-$version-x64-portable.zip';
   final zip = File('${packageDir.path}${Platform.pathSeparator}$archiveName');
@@ -95,8 +96,10 @@ Future<int> main(List<String> args) async {
   );
   if (!okZip) return 1;
 
-  // 当前引导版读新键；0.1.237 仍读旧键。迁移期两份内容必须完全一致。
-  final manifestKeys = <String>['windows/latest.json', 'latest-windows.json'];
+  final manifestKeys = <String>['windows/latest.json'];
+  // 0.1.237 会拒绝没有 Authenticode 的包；只有发布了受信任代码签名包时，
+  // 才能显式更新旧通道，避免旧版提示一个必然安装失败的更新。
+  if (publishLegacyManifest) manifestKeys.add('latest-windows.json');
   for (final manifestKey in manifestKeys) {
     stdout.writeln('正在上传清单 $manifestKey…');
     final okManifest = await _put(
