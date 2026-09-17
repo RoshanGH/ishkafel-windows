@@ -73,10 +73,12 @@ void main() {
     expect(src.contains('Process.run'), isFalse,
         reason: '要求先装一个命令行工具才能发版，早晚有一次发不出去');
     expect(src.contains('Process.start'), isFalse);
-    expect(src.indexOf("_put(signer, key"),
-        lessThan(src.indexOf('_manifestKey()')),
-        reason: '先传包后传清单——反了的话清单已经指向新版本而包还没上去，'
-            '这中间点更新的人会下到 404');
+    expect(
+      src.indexOf("contentType: 'application/zip'"),
+      lessThan(src.indexOf('for (final manifestKey in manifestKeys)')),
+      reason: '先传包后传清单——反了的话清单已经指向新版本而包还没上去，'
+          '这中间点更新的人会下到 404',
+    );
   });
 
   test('发布用的可写凭据不进产物', () {
