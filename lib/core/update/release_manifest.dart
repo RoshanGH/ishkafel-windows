@@ -56,7 +56,7 @@ class ReleaseManifest {
       if (publicKeyBytes.length != 32 || signatureBytes.length != 64) {
         return false;
       }
-      return Ed25519().verify(
+      return await Ed25519().verify(
         signingPayload,
         signature: Signature(
           signatureBytes,
