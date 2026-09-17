@@ -33,6 +33,12 @@ class RenderedCache {
   ///
   /// [prefix] 只影响文件名可读性，不参与内容判定——但要参与命名，
   /// 否则不同种类的产物撞在同一个名字上。
+  /// 正在渲的那几个：同一个 key 只跑一次，后来的等它。
+  ///
+  /// 不去重的话同一条素材会被并发转两遍——白烧一倍 CPU，
+  /// 而两个 ffmpeg 抢同一台机器只会都变慢
+  final Map<String, Future<String>> _inFlight = {};
+
   Future<String> render({
     required String key,
     required String prefix,
@@ -46,7 +52,32 @@ class RenderedCache {
       _touched.add(path);
       return path;
     }
+    // 已经有人在渲同一份了：等它，别再起一个 ffmpeg
+    if (_inFlight[path] case final running?) return running;
+    final future = _render(
+      path: path,
+      key: key,
+      prefix: prefix,
+      extension: extension,
+      args: args,
+      what: what,
+    );
+    _inFlight[path] = future;
+    try {
+      return await future;
+    } finally {
+      _inFlight.remove(path);
+    }
+  }
 
+  Future<String> _render({
+    required String path,
+    required String key,
+    required String prefix,
+    required String extension,
+    required List<String> Function(String out) args,
+    required String what,
+  }) async {
     dir.createSync(recursive: true);
     // 扩展名必须留在最后：ffmpeg 靠它推断输出格式，写成 `xxx.wav.part`
     // 会直接报「Unable to choose an output format」（真机上就这么炸的）
@@ -57,7 +88,13 @@ class RenderedCache {
         final tail = '${result.stderr}'.trim().split('\n').take(3).join(' / ');
         throw FfmpegException('$what 失败：$tail');
       }
-      File(temp).renameSync(path);
+      // 另一个实例可能已经渲好并搬到位了——那就用它的，把自己这份删掉。
+      // 内容由 key 决定，两份是一样的
+      if (File(path).existsSync() && File(path).lengthSync() > 0) {
+        File(temp).deleteSync();
+      } else {
+        File(temp).renameSync(path);
+      }
     } catch (e) {
       if (File(temp).existsSync()) File(temp).deleteSync();
       rethrow;
@@ -89,12 +126,23 @@ class RenderedCache {
     required String extension,
   }) => p.join(dir.path, '${prefix}_${digest(key)}.$extension');
 
-  /// 渲染中的临时名。`.part` 放在扩展名**之前**——见 [render] 里的说明
+  /// 渲染中的临时名。`.part` 放在扩展名**之前**——见 [render] 里的说明。
+  ///
+  /// **每次调用都不一样**（带一个序号）：同一个 key 可能被两处同时渲
+  /// （工作台和编导台各持一个缓存实例、预览重推和素材固定并发），
+  /// 临时名一样的话两边写同一个文件，先 rename 的那个把文件搬走，
+  /// 后一个当场 `PathNotFoundException`——真机日志：
+  /// 「生成预览代理失败……Cannot rename file to proxy_xxx.mp4」，
+  /// 那一段于是退回原规格，接缝处照旧闪（2026-09-17）
   String tempPathFor({
     required String key,
     required String prefix,
     required String extension,
-  }) => p.join(dir.path, '${prefix}_${digest(key)}.part.$extension');
+  }) =>
+      p.join(dir.path, '${prefix}_${digest(key)}.part${_tempSeq++}.$extension');
+
+  /// 临时名的序号。只要在同一个进程里互不相同就够——跨进程靠 pid 那一段
+  static int _tempSeq = DateTime.now().microsecondsSinceEpoch & 0xffff;
 
   /// 把这一轮没用到的产物删掉。
   ///

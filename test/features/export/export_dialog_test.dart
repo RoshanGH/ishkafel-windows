@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -714,4 +715,122 @@ void _elapsedShown() {
     expect(src, contains('Timer.periodic'),
         reason: '不定时重绘的话，「已用 N 秒」会一直停在 0 秒');
   });
+
+  group('停止导出', () {
+    /// 产品负责人 2026-09-16：「导出一次好几十条，甚至 100 条，让导出可以
+    /// 取消，已经导出的就留着当导出成功的物料。」
+    ///
+    /// 一批一百条要跑很久。没有出口的话人只能关掉整个 app，那一批已经导好
+    /// 的片子也跟着说不清楚了。
+    testWidgets('跑起来之后按钮就是「停止导出」，按下去说清在等什么', (tester) async {
+      final work = Directory.systemTemp.createTempSync('ishkafel_stop_');
+      addTearDown(() {
+        if (work.existsSync()) work.deleteSync(recursive: true);
+      });
+      // 卡在第一次 ffmpeg 上，好让「导出中」这个状态停住给我们看
+      final gate = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+
+      await _open(
+        tester,
+        replacements: [
+          UnitReplacement.perShot(const {
+            0: [11, 12, 13]
+          }),
+          UnitReplacement.keepOriginal(),
+        ],
+        factory: (String taskId, SubtitleStyle _) => ExportRunner(
+          run: (bin, args) async {
+            await gate.future;
+            File(args.last).writeAsStringSync('x');
+            return ProcessResult(1, 0, '', '');
+          },
+          workDir: work,
+          fetchMaterial: (id) async {
+            final f = File('${work.path}/m$id.mp4')..writeAsStringSync('m');
+            return f.path;
+          },
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('export-start')));
+      await tester.pump();
+
+      expect(find.byKey(const Key('export-stop')), findsOneWidget,
+          reason: '跑起来之后这个位置就该是出口');
+      expect(find.byKey(const Key('export-start')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('export-stop')));
+      await tester.pump();
+
+      // **等的是什么要说出来**：按下之后当前这个 ffmpeg 还要跑完，
+      // 不说的话人以为按了没反应，会去点第二次、第三次
+      expect(find.text('正在停下——等当前这一步跑完，已经导完的都留着'),
+          findsOneWidget);
+      expect(
+          tester
+              .widget<FilledButton>(find.byKey(const Key('export-stop')))
+              .onPressed,
+          isNull,
+          reason: '按过一次就不该再按——停就是停，没有「更停一点」');
+
+      gate.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('停下来之后如实说：已停止、导完几条，并且记进历史', (tester) async {
+      final work = Directory.systemTemp.createTempSync('ishkafel_stop2_');
+      addTearDown(() {
+        if (work.existsSync()) work.deleteSync(recursive: true);
+      });
+      // 闸门：第一次拉 ffmpeg 就停住，好让「导出中」这个状态留给我们操作
+      final gate = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+
+      await _open(
+        tester,
+        replacements: [
+          UnitReplacement.perShot(const {
+            0: [11, 12, 13]
+          }),
+          UnitReplacement.keepOriginal(),
+        ],
+        factory: (String taskId, SubtitleStyle _) => ExportRunner(
+          run: (bin, args) async {
+            await gate.future;
+            File(args.last).writeAsStringSync('x');
+            return ProcessResult(1, 0, '', '');
+          },
+          workDir: work,
+          fetchMaterial: (id) async {
+            final f = File('${work.path}/m$id.mp4')..writeAsStringSync('m');
+            return f.path;
+          },
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('export-start')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('export-stop')));
+      await tester.pump();
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      // 一条都没导完时不能说「都在输出目录里」——那儿空空如也
+      // （2026-09-16 真机：停在人声分离那一步，输出目录是空的）
+      expect(find.text('已停止——3 条一条都还没导完'), findsOneWidget);
+      // 停止不是失败：别把它算进失败数让人去查原因
+      expect(find.textContaining('条失败'), findsNothing);
+
+      expect(_recorded, hasLength(1),
+          reason: '停下来的那一批照样记进历史——不记的话，已经导完的那几条'
+              '人回头找不到是哪一次导的');
+      expect(_recorded.single.cancelled, isTrue);
+    });
+  });
 }
+

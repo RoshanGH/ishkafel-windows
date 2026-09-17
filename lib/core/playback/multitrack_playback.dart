@@ -6,6 +6,7 @@ import '../log/app_log.dart';
 import 'edl.dart';
 import 'follower_track.dart';
 import 'media_kit_playback.dart';
+import 'preview_normalizer.dart';
 import 'playback_controller.dart';
 import 'track_plan.dart';
 
@@ -112,7 +113,17 @@ class MultitrackPlayback implements PlaybackController {
   /// 中间那几版在被播出来之前就已经过时了，直接丢掉。
   TrackPlan? _queued;
 
-  Future<void> setPlan(TrackPlan plan) {
+  /// 换一套轨。
+  ///
+  /// **只接受规格化过的计划**（见 [PreviewNormalizer]）：画面轨的段与段
+  /// 规格不一致时，播放器在接缝处要重建解码器和视频输出——画面闪一下、
+  /// 主时钟停一拍，跟随轨随即被往回拽，听感是「一句话说了两遍」。
+  ///
+  /// 这条规则以前靠各处自觉，反复失效（8-10 诊断、8-25 只修了口播轨、
+  /// 9-16 画面轨又破）。现在把它钉在类型上：拿不到一个没验过的
+  /// [NormalizedTrackPlan]，新来源想绕过去**编译不过**
+  Future<void> setPlan(NormalizedTrackPlan normalized) {
+    final plan = normalized.plan;
     _queued = plan;
     final next = _pending.then((_) async {
       final pending = _queued;
@@ -287,26 +298,39 @@ class MultitrackPlayback implements PlaybackController {
   Future<void> _correctDrift() async {
     if (_disposed || _correcting) return;
     final masterMs = video.positionMs;
-    if (needsResync(masterMs: masterMs, followerMs: voice.positionMs)) {
+    final drift = voice.positionMs - masterMs;
+    if (drift.abs() >= seekInsteadOfChaseMs) {
+      // 差这么多不是漂移，是**换了个地方**（拖了播放头、换了源）。
+      // 慢慢追要追几十秒，跳过去才对
       _correcting = true;
-      final before = voice.positionMs;
       final watch = Stopwatch()..start();
-      // 停着的时候没有前瞻可言——主时钟不走，多跳一段就是错位
       final lead = video.isPlaying ? _seekCostMs : 0;
       try {
+        await voice.setRate(1.0);
         await voice.seekMs(masterMs + lead);
       } finally {
         watch.stop();
         _correcting = false;
       }
-      // 取上一次与这一次的均值，别被某一次的抖动带偏；封顶 1 秒，
-      // 免得一次异常的慢 seek 把之后所有纠偏都推到未来
       _seekCostMs =
           (((_seekCostMs + watch.elapsedMilliseconds) / 2).round()).clamp(0, 1000);
-      AppLog.info('口播轨偏了 ${before - masterMs}ms，纠回来：'
-          '目标 ${masterMs + lead}（前瞻 $lead）、'
-          'seek 耗时 ${watch.elapsedMilliseconds}ms、'
-          '现在跟随轨 ${voice.positionMs} / 主时钟 ${video.positionMs}');
+      AppLog.info('口播轨差了 ${drift}ms（不是漂移，是换了地方），跳到 '
+          '${masterMs + lead}：seek 耗时 ${watch.elapsedMilliseconds}ms');
+    } else if (video.isPlaying) {
+      // **微调速率去追，不 seek**。seek 是跳变：往回跳就重播一小段
+      // （听感「一句话说了两遍」），往前跳就吞掉一小段。而速率调到 1.02
+      // 追上再恢复，人听不出来——mpv 默认开着音调校正，变速不变调。
+      //
+      // 这才是接缝顿挫不再变成可闻毛病的关键：主时钟在接缝处停一拍，
+      // 跟随轨相对超前 20~150ms，以前会被硬拽回去，现在只是悄悄慢一点点
+      final rate = chaseRate(drift);
+      await voice.setRate(rate);
+      if (rate != 1.0) {
+        AppLog.info('口播轨偏 ${drift}ms，用 ${rate.toStringAsFixed(3)}× 追');
+      }
+    } else {
+      // 停着的时候不追——主时钟不走，追也是错位
+      await voice.setRate(1.0);
     }
     final cue = _bgmCue;
     if (cue.source == null) return;

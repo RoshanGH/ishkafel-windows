@@ -58,6 +58,17 @@ class MediaKitFollower implements FollowerTrack {
   Future<void> setVolume(double volume) =>
       _gate.run(() => player.setVolume((volume.clamp(0.0, 1.0)) * 100));
 
+  /// 上一次设的速率。同一个值不重复下发——每次都下发会让 mpv 反复重建
+  /// 音频滤镜链，那本身就是一次可闻的顿挫
+  double _rate = 1.0;
+
+  @override
+  Future<void> setRate(double rate) async {
+    if ((rate - _rate).abs() < 0.001) return;
+    _rate = rate;
+    await _gate.run(() => player.setRate(rate));
+  }
+
   @override
   int get positionMs => _loaded == null ? 0 : player.state.position.inMilliseconds;
 

@@ -19,6 +19,7 @@ import '../subtitle/subtitle_overlay.dart';
 import '../subtitle/subtitle_track.dart';
 import '../subtitle/subtitle_rasterizer.dart';
 import '../subtitle/subtitle_style.dart';
+import 'export_cancel.dart';
 import 'export_commands.dart';
 import 'export_file_name.dart';
 import 'export_plan.dart';
@@ -42,11 +43,18 @@ class ExportOutcome {
   /// 如实报出来是哪一段）
   final List<String> notes;
 
+  /// 人按了停止，这一条没导（正在导的那条被丢掉，或者还没轮到）。
+  ///
+  /// **和失败分开**：失败要人去查原因，停止的原因就是他自己按的。
+  /// 混在一起报会让人以为导出坏了
+  final bool cancelled;
+
   const ExportOutcome({
     required this.index,
     this.path,
     this.failure,
     this.notes = const [],
+    this.cancelled = false,
   });
 
   bool get ok => path != null;
@@ -94,6 +102,21 @@ class ExportRunner {
 
   /// 字幕图渲染器（系统渲字）。测试注入假实现
   final SubtitleRasterizer rasterizer;
+
+  /// 这一批的停止开关。只在 [exportCombinations] 执行期间有效——
+  /// **一个 runner 实例一次只跑一批**（工厂每次导出新建一个）
+  ExportCancelToken? _cancel;
+
+  /// 拉子进程之前先看一眼有没有按停止。
+  ///
+  /// **检查点只放这一处**：导出的时间几乎全花在 ffmpeg 上（切片、拼接、
+  /// 合成、人声分离），把它放在拉进程之前，一个地方就覆盖了全部环节，
+  /// 最坏只等当前这一个进程跑完。而且此刻**下一个文件还没开始写**，
+  /// 不会在输出目录里留下半成品
+  Future<ProcessResult> _cancellableRun(String exe, List<String> args) {
+    _cancel?.throwIfCancelled();
+    return run(exe, args);
+  }
 
   ExportRunner({
     required this.run,
@@ -255,6 +278,9 @@ class ExportRunner {
     String? vocalsPath,
     int limit = ReplacementPlan.maxCombinations,
     ExportSpec? spec,
+
+    /// 停止开关（见 [ExportCancelToken]）
+    ExportCancelToken? cancel,
     List<AsrSentence> subtitleSentences = const [],
 
     /// 「保留素材原声」的全片打底设置。单个视觉镜头可以覆盖它
@@ -294,6 +320,7 @@ class ExportRunner {
       backgroundPath: backgroundPath,
       subtitleTrack: subtitleTrack,
       onProgress: onProgress,
+      cancel: cancel,
     );
   }
 
@@ -336,9 +363,58 @@ class ExportRunner {
     /// **手改过的**字幕。没改过的坑位照 ASR 现算（见 [SubtitleTrack]）
     SubtitleTrack subtitleTrack = const SubtitleTrack.empty(),
     ExportProgress? onProgress,
+
+    /// 停止开关。按下之后：已经导完的全部留着，正在导的那条丢掉，
+    /// 还没轮到的标成「已停止」（见 [ExportCancelToken]）
+    ExportCancelToken? cancel,
   }) async {
     if (combos.isEmpty) return const [];
 
+    _cancel = cancel;
+    try {
+      return await _exportCombinations(
+        combos: combos,
+        sourcePath: sourcePath,
+        units: units,
+        replacements: replacements,
+        outputDir: outputDir,
+        bgm: bgm,
+        voiceAudio: voiceAudio,
+        voices: voices,
+        vocalsPath: vocalsPath,
+        spec: spec,
+        subtitleSentences: subtitleSentences,
+        materialAudio: materialAudio,
+        sourceAudio: sourceAudio,
+        backgroundPath: backgroundPath,
+        subtitleTrack: subtitleTrack,
+        onProgress: onProgress,
+        cancel: cancel,
+      );
+    } finally {
+      _cancel = null;
+    }
+  }
+
+  Future<List<ExportOutcome>> _exportCombinations({
+    required List<ExportCombination> combos,
+    required String? sourcePath,
+    required List<SemanticUnit> units,
+    required List<UnitReplacement> replacements,
+    required Directory outputDir,
+    required BgmPlan bgm,
+    required Map<String, String> voiceAudio,
+    required VoicePlan voices,
+    required String? vocalsPath,
+    required ExportSpec? spec,
+    required List<AsrSentence> subtitleSentences,
+    required MaterialAudioSetting materialAudio,
+    required SourceAudioSetting sourceAudio,
+    required String? backgroundPath,
+    required SubtitleTrack subtitleTrack,
+    required ExportProgress? onProgress,
+    required ExportCancelToken? cancel,
+  }) async {
     workDir.createSync(recursive: true);
     outputDir.createSync(recursive: true);
     final total = combos.length;
@@ -386,6 +462,8 @@ class ExportRunner {
     final Map<int, Map<int, ({String path, int ms})>> wholeByCombo = {};
     try {
       for (var i = 0; i < combos.length; i++) {
+        // 下载素材、探时长都不走子进程，那道检查点管不着——这里自己看一眼
+        cancel?.throwIfCancelled();
         final per = <int, ({String path, int ms})>{};
         for (final segment in combos[i].segments) {
           final id = segment.candidateId;
@@ -397,6 +475,8 @@ class ExportRunner {
         }
         wholeByCombo[i] = per;
       }
+    } on ExportCancelled {
+      return _allCancelled(combos, onProgress);
     } catch (e) {
       AppLog.warn('导出：整体替换的素材准备失败：$e');
       return [
@@ -411,9 +491,12 @@ class ExportRunner {
     try {
       for (final unit in units) {
         if (unit.baseCandidateId case final id?) {
+          cancel?.throwIfCancelled();
           baseAudioPaths[unit.index] = await material(id);
         }
       }
+    } on ExportCancelled {
+      return _allCancelled(combos, onProgress);
     } catch (e) {
       AppLog.warn('导出：底片素材准备失败：$e');
       return [
@@ -441,7 +524,9 @@ class ExportRunner {
       try {
         track =
             await AudioTrackBuilder(
-              run: run,
+              // 人声分离一条要一两分钟，不挂上停止开关的话，按了停止
+              // 还得干等它跑完
+              run: _cancellableRun,
               // 逐条合时各用各的目录，否则中间产物互相覆盖
               workDir: perVariant
                   ? Directory(p.join(workDir.path, 'audio_v$i'))
@@ -488,6 +573,10 @@ class ExportRunner {
                 probe: probeOnce,
               ),
             );
+      } on ExportCancelled {
+        // 停止要原样往上抛：包成「声音合成失败」的话，人按了停止
+        // 却看到一屏合成失败，会以为是软件坏了
+        rethrow;
       } catch (e) {
         throw Exception('声音合成失败：$e');
       }
@@ -511,6 +600,9 @@ class ExportRunner {
         sharedAudio = await buildAudio(0);
         // 共用的那条声音，它的话对每一条都成立
         sharedNotes.addAll(audioNotes);
+      } on ExportCancelled {
+        // 一条都还没导，全标「已停止」——不是失败
+        return _allCancelled(combos, onProgress);
       } catch (e) {
         AppLog.warn('导出：$e');
         // 共用的那条声音挂了，每一条都成不了——如实给同一个原因
@@ -522,7 +614,25 @@ class ExportRunner {
 
     final clips = <String, Future<String>>{}; // 段落指纹 → 渲染中/已渲染的切片
     final out = <ExportOutcome>[];
+
+    /// 人按了停止：**已经导完的一条都不动**，这一条连同还没轮到的
+    /// 全部标成「已停止」。一并收尾播报，别让进度条停在半路
+    List<ExportOutcome> stopHere() {
+      for (var i = out.length; i < combos.length; i++) {
+        out.add(ExportOutcome(index: combos[i].index, cancelled: true));
+      }
+      final done = out.where((o) => o.ok).length;
+      AppLog.info('导出已停止：$total 条里导完 $done 条');
+      onProgress?.call(
+          total, total, '已停止——$total 条里导完 $done 条，都留在输出目录里');
+      return List.unmodifiable(out);
+    }
+
     for (final combo in combos) {
+      // **每条开工前先看一眼**：ffmpeg 那道检查点管的是「正在跑的这一步」，
+      // 这一道管的是「下一条还要不要开」——下载素材、探时长这些不走
+      // 子进程的活儿也就不会白做
+      if (cancel?.isCancelled ?? false) return stopHere();
       // 逐条合声音（有整体替换/多首配乐）时，第一步是人声分离——CPU 上
       // 一条素材要一两分钟。不说清的话进度会挂着不动五六分钟像卡死
       onProgress?.call(
@@ -556,6 +666,9 @@ class ExportRunner {
           notes: List.unmodifiable(
               sharedAudio == null ? audioNotes : sharedNotes),
         ));
+      } on ExportCancelled {
+        // 人自己按的停止，不是失败——这一条丢掉，已经导完的全留着
+        return stopHere();
       } catch (e) {
         // 一条成片没出来是**硬失败**，不是「注意一下」——用 error 级别，
         // 别让人在一屏 warn 里把它滑过去
@@ -808,7 +921,7 @@ class ExportRunner {
   }
 
   Future<void> _ffmpeg(List<String> args, String what) async {
-    final result = await run('ffmpeg', args);
+    final result = await _cancellableRun('ffmpeg', args);
     if (result.exitCode != 0) {
       // ffmpeg 的 stderr 动辄几百行，只留最后几行——真正的原因总在末尾
       final stderr = '${result.stderr}'.trim().split('\n');
@@ -818,4 +931,14 @@ class ExportRunner {
       throw Exception('$what 失败：${tail.join(' / ')}');
     }
   }
+}
+
+/// 一条都没导成就停了：全部标「已停止」，并如实收尾播报
+List<ExportOutcome> _allCancelled(
+    List<ExportCombination> combos, ExportProgress? onProgress) {
+  AppLog.info('导出已停止：一条都还没导完');
+  onProgress?.call(combos.length, combos.length, '已停止——一条都还没导完');
+  return List.unmodifiable([
+    for (final c in combos) ExportOutcome(index: c.index, cancelled: true),
+  ]);
 }

@@ -29,6 +29,7 @@ import '../../core/audio/bgm_plan.dart';
 import '../../core/audio/material_audio.dart';
 import '../../core/audio/source_audio.dart';
 import '../../core/export/export_plan.dart';
+import '../../core/export/export_cancel.dart';
 import '../../core/export/export_runner.dart';
 import '../../core/subtitle/subtitle_style.dart';
 import '../../core/subtitle/subtitle_track.dart';
@@ -232,6 +233,10 @@ class _ExportDialog extends ConsumerStatefulWidget {
 class _ExportDialogState extends ConsumerState<_ExportDialog> {
   bool _running = false;
 
+  /// 这一批的停止开关。按下之后：已经导完的全留着，正在导的那条丢掉
+  /// （见 [ExportCancelToken]）。导完/停完置空
+  ExportCancelToken? _cancel;
+
   /// 导到哪儿。可以在开始之前改
   late Directory _outputDir = widget.outputDir;
 
@@ -318,6 +323,7 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
     }
     setState(() {
       _running = true;
+      _cancel = ExportCancelToken();
       _markStep(0);
       // 秒级重绘，让「已用 N 秒」真的走起来
       _tick?.cancel();
@@ -347,6 +353,7 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
         sourceAudio: widget.sourceAudio,
         backgroundPath: widget.backgroundPath,
         subtitleTrack: widget.subtitleTrack,
+        cancel: _cancel,
         onProgress: (d, t, w) {
           if (mounted) {
             setState(() {
@@ -372,6 +379,7 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
               sourceAudio: widget.sourceAudio,
               backgroundPath: widget.backgroundPath,
               subtitleTrack: widget.subtitleTrack,
+              cancel: _cancel,
               onProgress: (d, t, w) {
                 if (mounted) {
             setState(() {
@@ -389,6 +397,9 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
         total: results.length,
         succeeded: results.where((r) => r.ok).length,
         outputDir: _outputDir.path,
+        // 停下来的那一批照样记进历史——已经导完的就是能交付的物料，
+        // 不记的话人回头找不到它们是哪一次导的
+        cancelled: results.any((r) => r.cancelled),
       );
       setState(() => _exports = [..._exports, record]);
       await widget.onExported?.call(record);
@@ -402,7 +413,12 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
     } finally {
       _tick?.cancel();
       _tick = null;
-      if (mounted) setState(() => _running = false);
+      if (mounted) {
+        setState(() {
+          _running = false;
+          _cancel = null;
+        });
+      }
     }
   }
 
@@ -474,10 +490,15 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
                       backgroundColor: AppColors.surface),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                      [
-                        '${p.$1}/${p.$2} · ${p.$3}',
-                        ?_elapsedText,
-                      ].join(' · '),
+                      (_cancel?.isCancelled ?? false)
+                          // **等的是什么要说出来**：按下之后当前这个 ffmpeg
+                          // 还要跑完（人声分离那种一两分钟），不说的话人以为
+                          // 按了没反应，会去点第二次、第三次
+                          ? '正在停下——等当前这一步跑完，已经导完的都留着'
+                          : [
+                              '${p.$1}/${p.$2} · ${p.$3}',
+                              ?_elapsedText,
+                            ].join(' · '),
                       key: const Key('export-progress'),
                       style: const TextStyle(
                           color: AppColors.textSecondary,
@@ -506,11 +527,24 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
               onPressed: _reveal,
               child: Text(PlatformShell().revealLabel),
             ),
-          if (_results == null)
+          // **跑起来之后这个位置就是「停止导出」**。一批一百条要跑很久，
+          // 没有出口的话人只能关掉整个 app，那一批已经导好的片子也跟着
+          // 说不清楚了（产品负责人 2026-09-16）
+          if (_results == null && _running)
+            FilledButton(
+              key: const Key('export-stop'),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.red),
+              onPressed: (_cancel?.isCancelled ?? true)
+                  ? null
+                  : () => setState(() => _cancel?.cancel()),
+              child: Text(
+                  (_cancel?.isCancelled ?? false) ? '正在停…' : '停止导出'),
+            ),
+          if (_results == null && !_running)
             FilledButton(
               key: const Key('export-start'),
-              onPressed: _running || _combos.isEmpty ? null : _start,
-              child: Text(_running ? '导出中…' : '开始导出'),
+              onPressed: _combos.isEmpty ? null : _start,
+              child: const Text('开始导出'),
             ),
         ],
       );
@@ -782,7 +816,8 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
   static const int _historyLimit = 5;
 
   Widget _historyRow(ExportRecord record) {
-    final failed = record.total - record.succeeded;
+    // 停下来的那一批：没导的不是「失败」，是他自己按的停止
+    final failed = record.cancelled ? 0 : record.total - record.succeeded;
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Row(
@@ -796,8 +831,11 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
           ),
           const SizedBox(width: AppSpacing.sm),
           Text(
-            failed > 0 ? '${record.succeeded} 条（$failed 条失败）'
-                : '${record.succeeded} 条',
+            record.cancelled
+                ? '${record.succeeded} 条（${record.total} 条里停的）'
+                : failed > 0
+                    ? '${record.succeeded} 条（$failed 条失败）'
+                    : '${record.succeeded} 条',
             style: TextStyle(
                 color: failed > 0 ? AppColors.orange : AppColors.textSecondary,
                 fontSize: AppFontSize.micro),
@@ -832,17 +870,32 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
   }
 
   Widget _resultList(List<ExportOutcome> results) {
-    final failed = results.where((r) => !r.ok).toList();
+    final failed = results.where((r) => !r.ok && !r.cancelled).toList();
+    final stopped = results.where((r) => r.cancelled).toList();
+    final done = results.where((r) => r.ok).length;
+    // **停止不是失败**：人自己按的，别把它算进失败数让他去查原因。
+    // 已经导完的那几条就是能交付的物料，先把这个数说出来
+    final headline = stopped.isNotEmpty
+        ? (done == 0
+            // 一条都没导完时不能说「都在输出目录里」——那儿空空如也
+            ? '已停止——${results.length} 条一条都还没导完'
+            : failed.isEmpty
+                ? '已停止——${results.length} 条里导完 $done 条，都在输出目录里'
+                : '已停止——${results.length} 条里导完 $done 条，'
+                    '失败 ${failed.length} 条')
+        : failed.isEmpty
+            ? '${results.length} 条全部导出完成'
+            : '成功 $done 条，失败 ${failed.length} 条';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          failed.isEmpty
-              ? '${results.length} 条全部导出完成'
-              : '成功 ${results.length - failed.length} 条，失败 ${failed.length} 条',
+          headline,
           key: const Key('export-result'),
           style: TextStyle(
-              color: failed.isEmpty ? AppColors.green : AppColors.orange,
+              color: failed.isEmpty && stopped.isEmpty
+                  ? AppColors.green
+                  : AppColors.orange,
               fontSize: AppFontSize.body,
               fontWeight: FontWeight.w600),
         ),

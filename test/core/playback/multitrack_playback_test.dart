@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/core/playback/follower_track.dart';
 import 'package:ishkafel/core/playback/multitrack_playback.dart';
 import 'package:ishkafel/core/playback/playback_controller.dart';
+import 'package:ishkafel/core/playback/preview_normalizer.dart';
 import 'package:ishkafel/core/playback/track_plan.dart';
 
 /// 记录所有命令的假跟随轨
@@ -39,6 +40,15 @@ class _Fake implements FollowerTrack {
   Future<void> setVolume(double v) async {
     volume = v;
     calls.add('volume:$v');
+  }
+
+  /// 追赶用的速率。测试记下来，验「不再硬 seek 而是微调速率」
+  double rate = 1.0;
+
+  @override
+  Future<void> setRate(double value) async {
+    rate = value;
+    calls.add('rate:${value.toStringAsFixed(3)}');
   }
 
   @override
@@ -248,7 +258,7 @@ void _switchBehaviour() {
         );
 
     test('第一次推方案：打开画面轨，并且**永不解码它的音频**', () async {
-      await playback.setPlan(planWith(videoSource: '/v/a.mp4'));
+      await playback.setPlanForTest(planWith(videoSource: '/v/a.mp4'));
 
       expect(master.calls.where((c) => c.startsWith('open(')), hasLength(1));
       expect(master.audioDisabled, isTrue,
@@ -261,7 +271,7 @@ void _switchBehaviour() {
       final pb = MultitrackPlayback(
           video: master, voice: voice, bgm: bgm, source: source);
       addTearDown(pb.dispose);
-      await pb.setPlan(TrackPlan(
+      await pb.setPlanForTest(TrackPlan(
         video: const [
           TrackSegment(
               atMs: 0, durationMs: 4000, source: '/v/a.mp4', volume: 0.3),
@@ -286,7 +296,7 @@ void _switchBehaviour() {
       final pb = MultitrackPlayback(
           video: master, voice: voice, bgm: bgm, source: source);
       addTearDown(pb.dispose);
-      await pb.setPlan(TrackPlan(
+      await pb.setPlanForTest(TrackPlan(
         // 排轨时配音行的画面段拿的是全片原声音量，默认就是 0
         video: const [
           TrackSegment(
@@ -300,12 +310,12 @@ void _switchBehaviour() {
     });
 
     test('只改配乐时画面**一帧都不动**——重开一次就是一下黑闪', () async {
-      await playback.setPlan(
+      await playback.setPlanForTest(
           planWith(videoSource: '/v/a.mp4', bgmSource: '/b/1.mp3'));
       final opensBefore =
           master.calls.where((c) => c.startsWith('open(')).length;
 
-      await playback.setPlan(
+      await playback.setPlanForTest(
           planWith(videoSource: '/v/a.mp4', bgmSource: '/b/2.mp3'));
 
       expect(master.calls.where((c) => c.startsWith('open(')).length,
@@ -315,26 +325,26 @@ void _switchBehaviour() {
     });
 
     test('画面真的变了才重开', () async {
-      await playback.setPlan(planWith(videoSource: '/v/a.mp4'));
-      await playback.setPlan(planWith(videoSource: '/m/71.mp4'));
+      await playback.setPlanForTest(planWith(videoSource: '/v/a.mp4'));
+      await playback.setPlanForTest(planWith(videoSource: '/m/71.mp4'));
 
       expect(master.calls.where((c) => c.startsWith('open(')), hasLength(2));
     });
 
     test('换之前在播，换完接着播——点一下 ★ 就把播放停住是不能接受的', () async {
-      await playback.setPlan(planWith(videoSource: '/v/a.mp4'));
+      await playback.setPlanForTest(planWith(videoSource: '/v/a.mp4'));
       await playback.play();
       expect(master.isPlaying, isTrue);
 
-      await playback.setPlan(planWith(videoSource: '/m/71.mp4'));
+      await playback.setPlanForTest(planWith(videoSource: '/m/71.mp4'));
 
       expect(master.isPlaying, isTrue);
       expect(voice.calls, contains('play'));
     });
 
     test('换之前是暂停的就保持暂停，不擅自开始播', () async {
-      await playback.setPlan(planWith(videoSource: '/v/a.mp4'));
-      await playback.setPlan(planWith(videoSource: '/m/71.mp4'));
+      await playback.setPlanForTest(planWith(videoSource: '/v/a.mp4'));
+      await playback.setPlanForTest(planWith(videoSource: '/m/71.mp4'));
 
       expect(master.isPlaying, isFalse);
     });
@@ -361,9 +371,9 @@ void _switchBehaviour() {
         unitRanges: {0: (0, 4000), 1: (4000, 10000)},
       );
 
-      await playback.setPlan(replaced);
+      await playback.setPlanForTest(replaced);
       await playback.seekMs(1000); // 替换后的 U1 走了一半
-      await playback.setPlan(plain);
+      await playback.setPlanForTest(plain);
 
       expect(master.positionMs, 2000,
           reason: '「停在 U1 的一半」= 原片 2000ms；'
@@ -393,29 +403,37 @@ void _emptyVideoTrack() {
     tearDown(() => playback.dispose());
 
     test('从有内容变成空时，把画面源卸掉', () async {
-      await playback.setPlan(TrackPlan(video: [
+      await playback.setPlanForTest(TrackPlan(video: [
         TrackSegment(atMs: 0, durationMs: 5000, source: '/a.mp4'),
       ]));
       master.calls.clear();
 
-      await playback.setPlan(const TrackPlan());
+      await playback.setPlanForTest(const TrackPlan());
 
       expect(master.calls, contains('clearSource'));
     });
 
     test('本来就空时不反复卸——那会在每次重推轨道时多做一次无用功', () async {
-      await playback.setPlan(const TrackPlan());
+      await playback.setPlanForTest(const TrackPlan());
       master.calls.clear();
-      await playback.setPlan(const TrackPlan());
+      await playback.setPlanForTest(const TrackPlan());
       expect(master.calls, isNot(contains('clearSource')));
     });
 
     test('卸掉之后再给内容，照常打开', () async {
-      await playback.setPlan(const TrackPlan());
-      await playback.setPlan(TrackPlan(video: [
+      await playback.setPlanForTest(const TrackPlan());
+      await playback.setPlanForTest(TrackPlan(video: [
         TrackSegment(atMs: 0, durationMs: 5000, source: '/b.mp4'),
       ]));
       expect(master.calls.any((c) => c.startsWith('open')), isTrue);
     });
   });
+}
+
+/// 测试里推方案：走**和生产同一道闸**，只是挂在「原样放行」档上
+/// （见 [PreviewNormalizer.passthrough]）。这些用例验的是播放器的行为，
+/// 不是规格化本身——规格化有自己的用例
+extension _PushPlan on MultitrackPlayback {
+  Future<void> setPlanForTest(TrackPlan plan) async =>
+      setPlan(await PreviewNormalizer.passthrough().normalize(plan));
 }

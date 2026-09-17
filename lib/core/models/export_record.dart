@@ -25,11 +25,19 @@ class ExportRecord {
   /// 导到哪个目录去了。用户要能照着它去找片子
   final String outputDir;
 
+  /// 这一批是**人按停止**停下来的。
+  ///
+  /// 不记的话，一百条里导了三十七条就停，历史上写着「37/100」——看起来
+  /// 像失败了 63 条，人会去查原因，而原因就是他自己按的。导完的那几条
+  /// 照样是能交付的物料（产品负责人 2026-09-16）
+  final bool cancelled;
+
   const ExportRecord({
     required this.at,
     required this.total,
     required this.succeeded,
     required this.outputDir,
+    this.cancelled = false,
   });
 
   bool get allSucceeded => succeeded == total;
@@ -39,6 +47,8 @@ class ExportRecord {
         'total': total,
         'succeeded': succeeded,
         'outputDir': outputDir,
+        // 老存档没有这个字段，读出来是 false——那时候还不能停，也确实没停过
+        if (cancelled) 'cancelled': true,
       };
 
   /// 宽松解析：畸形的那一条跳过，不牵连整份任务
@@ -57,6 +67,7 @@ class ExportRecord {
       total: total is int ? total : 0,
       succeeded: succeeded is int ? succeeded : 0,
       outputDir: outputDir,
+      cancelled: raw['cancelled'] == true,
     );
   }
 
@@ -73,8 +84,10 @@ class ExportRecord {
       other.at == at &&
       other.total == total &&
       other.succeeded == succeeded &&
-      other.outputDir == outputDir;
+      other.outputDir == outputDir &&
+      other.cancelled == cancelled;
 
   @override
-  int get hashCode => Object.hash(at, total, succeeded, outputDir);
+  int get hashCode =>
+      Object.hash(at, total, succeeded, outputDir, cancelled);
 }

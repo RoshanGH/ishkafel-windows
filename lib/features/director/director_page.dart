@@ -46,9 +46,11 @@ import 'package:path/path.dart' as p;
 import '../../core/ffmpeg/ffprobe_service.dart';
 import '../../core/ffmpeg/process_runner.dart';
 import '../../core/ffmpeg/rendered_cache.dart';
+import '../../core/ffmpeg/proxy_builder.dart';
 import '../../core/playback/media_kit_follower.dart';
 import '../../core/playback/media_kit_playback.dart';
 import '../../core/playback/multitrack_playback.dart';
+import '../../core/playback/preview_normalizer.dart';
 import '../../core/playback/playback_controller.dart';
 import '../../core/playback/track_plan.dart';
 import '../../core/script/script_export.dart';
@@ -292,6 +294,9 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
   /// 口播轨的段规范化器：进这条轨的每一段都要转成同规格（见
   /// PreviewVoiceNormalizer）。渲好的路径按内容指纹记在这里
   PreviewVoiceNormalizer? _voiceNormalizer;
+
+  /// 画面轨的规格化闸。没有数据目录（测试环境）时原样放行
+  PreviewNormalizer _normalizer = PreviewNormalizer.passthrough();
   final Map<String, String> _voiceSegs = {};
   final Set<String> _renderingVoiceSegs = {};
   final Map<String, String> _speedClips = {};
@@ -435,6 +440,21 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
           run: const ResolvingProcessRunner().call,
         ),
       );
+      // 画面轨的规格化闸。口播轨 2026-08-25 就做了（上面那个
+      // PreviewVoiceNormalizer），画面轨一直没有——于是同一个病在
+      // 画面上又犯了一次（见 [PreviewNormalizer] 开头那段账）
+      final proxy = ProxyBuilder(
+        cache: RenderedCache(
+          dir: Directory(p.join(dataDir.path, 'preview_proxy')),
+          run: const ResolvingProcessRunner().call,
+        ),
+        run: const ResolvingProcessRunner().call,
+      );
+      _normalizer = PreviewNormalizer(
+        probe: proxy.probe,
+        toProxy: (path) => proxy.build(
+            path: path, frameRate: frameRateArg(_exportSpec.fps.toDouble())),
+      );
     }
     _dataDir = dataDir;
     _docPrint = dataDir == null ? null : taskFingerprint(dataDir, _task.id);
@@ -507,8 +527,14 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
         bgmPathOf: (id) => _bgmCache?.localPathOf(id),
         voiceSegmentOf: _voiceSegmentOf,
         voiceOk: (path) => File(path).existsSync());
-    unawaited(playback.setPlan(result.plan));
+    unawaited(_pushPlan(playback, result.plan));
   }
+
+  /// 把方案推给播放器。**必经规格化闸**——画面轨段与段规格不一致时，
+  /// 播放器在接缝处要重建解码器和视频输出，画面闪一下、主时钟停一拍，
+  /// 跟随轨随即被往回拽（见 [PreviewNormalizer]）
+  Future<void> _pushPlan(MultitrackPlayback playback, TrackPlan plan) async =>
+      playback.setPlan(await _normalizer.normalize(plan));
 
   void _applySourceVolumeNow() {
     final playback = _playback;
@@ -526,7 +552,7 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
         voiceSegmentOf: _voiceSegmentOf,
         voiceOk: (path) => File(path).existsSync());
     setState(() => _planResult = result);
-    unawaited(playback.setPlan(result.plan));
+    unawaited(_pushPlan(playback, result.plan));
   }
 
   /// 口播轨上这一段该用哪个已规范化的文件；还没渲好就先返回 null
@@ -619,7 +645,7 @@ class _DirectorPageState extends ConsumerState<DirectorPage> {
     if (!mounted) return;
     setState(() => _planResult = result);
     if (playback is MultitrackPlayback) {
-      await playback.setPlan(result.plan);
+      await _pushPlan(playback, result.plan);
     }
     // 还有切片在渲就先不落——那时候画面还会再变一次
     if (mounted &&

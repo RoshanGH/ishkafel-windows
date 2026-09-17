@@ -10,6 +10,7 @@ import '../../core/audio/voice_plan.dart';
 import '../../core/models/renew_task.dart';
 import '../../core/models/semantic_unit.dart';
 import '../../core/playback/multitrack_playback.dart';
+import '../../core/playback/preview_normalizer.dart';
 import '../../core/playback/track_plan.dart';
 import '../../core/script/skipped_lines_summary.dart';
 import '../../core/playback/track_plan_builder.dart';
@@ -57,6 +58,15 @@ class PreviewTracks extends ChangeNotifier {
   String? _lastKey;
   bool _disposed = false;
 
+  /// 这一轮有哪几段没能统一到预览规格。**不静默**：它们在接缝处会闪
+  List<String> _offSpec = const [];
+
+  /// 画面轨的规格化闸（见 [PreviewNormalizer]）。
+  ///
+  /// **必需**：不设防的装配要显式传 `PreviewNormalizer.passthrough()`，
+  /// 那是一个扫得到的名字——不能让「忘了传」和「有意放行」长得一样
+  final PreviewNormalizer normalizer;
+
   PreviewTracks({
     required this.playback,
     this.materials,
@@ -65,6 +75,7 @@ class PreviewTracks extends ChangeNotifier {
     this.gapClip,
     this.silentClip,
     this.separateMaterial,
+    required this.normalizer,
   }) {
     speedFitter?.addListener(_onFitterChanged);
   }
@@ -77,6 +88,13 @@ class PreviewTracks extends ChangeNotifier {
     final pending = speedFitter?.pending ?? 0;
     if (pending > 0) {
       return '正在准备 $pending 段替换镜头的变速画面，其余部分已经能播';
+    }
+    // 有段落没能统一到预览规格：接缝处会闪一下。**不能不说**——
+    // 这正是「预览不平稳」的根因，不说的话下一个人又要从头查一遍
+    if (_offSpec.isNotEmpty) {
+      return '有 ${_offSpec.length} 段画面没能转成预览规格'
+          '（${_offSpec.take(3).join('、')}${_offSpec.length > 3 ? ' 等' : ''}），'
+          '播到这几段的接缝处画面会闪一下。导出不受影响';
     }
     if (_plan.bgmMissing.isNotEmpty) return _plan.bgmMissing.join('；');
     // 「原片这一镜的声音」要的分离轨不在：预览先放原混音，但不能不说——
@@ -177,7 +195,11 @@ class PreviewTracks extends ChangeNotifier {
     if (key == _lastKey) return;
     _lastKey = key;
     _plan = plan;
-    await playback.setPlan(plan);
+    // **过闸**：画面轨每一段验一遍规格，不合规的换成代理。正常情况下
+    // 一次转码都不会发生（素材下载时已经转过），这里只是查缓存
+    final normalized = await normalizer.normalize(plan);
+    _offSpec = normalized.offSpec;
+    await playback.setPlan(normalized);
     _notify();
   }
 

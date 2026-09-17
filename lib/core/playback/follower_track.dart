@@ -18,6 +18,14 @@ abstract class FollowerTrack {
   /// 0.0 ~ 1.0
   Future<void> setVolume(double volume);
 
+  /// 播放速率（1.0 = 原速）。**用来微调着追主时钟**，不是给人调倍速的。
+  ///
+  /// 为什么不用 seek 追：seek 是一次跳变，往回跳就重播一小段（听感是
+  /// 「一句话说了两遍」），往前跳就吞掉一小段。而把速率调到 1.02 追上再
+  /// 恢复，人是听不出来的——mpv 默认开着音调校正，变速不变调。
+  /// 这是播放器做音画同步的标准做法
+  Future<void> setRate(double rate);
+
   /// 当前位置（毫秒）。还没加载时返回 0
   int get positionMs;
 
@@ -36,6 +44,37 @@ const int syncToleranceMs = 150;
 bool needsResync({required int masterMs, required int? followerMs}) {
   if (followerMs == null) return false;
   return (followerMs - masterMs).abs() > syncToleranceMs;
+}
+
+/// 偏差大到这个数就不微调了，直接跳。
+///
+/// 这不是"漂移"，是**换了个地方**：人拖了播放头、换了源、EDL 重开。
+/// 那时候慢慢追要追好几十秒，跳过去才是对的
+const int seekInsteadOfChaseMs = 1200;
+
+/// 追平用多长时间。太短则速率偏离大到能听出来，太长则一次接缝的偏差
+/// 要拖好几秒才抹平。4 秒对应 100ms 偏差 = 2.5% 速率偏离，听不出来
+const int chaseWindowMs = 4000;
+
+/// 速率最多偏离多少。±6% 是音调校正下还自然的上限
+const double maxChaseRate = 0.06;
+
+/// 进了这个范围就收手，把速率放回 1.0。
+///
+/// **必须比 [syncToleranceMs] 小得多**：踩着阈值收手的话，刚回到 149ms
+/// 就停止追赶，下一次采样又超线，于是一直在追——而 65ms 的恒定偏差正是
+/// 这么来的（2026-09-16 真机：全程落后 26~139ms，够不着 150ms 的硬阈值，
+/// 所以永远不纠，音画一直差着）
+const int chaseDeadZoneMs = 25;
+
+/// 这一刻跟随轨该用什么速率去追主时钟。
+///
+/// [drift] = 跟随轨位置 − 主时钟位置。负数 = 落后，要加速。
+/// 返回 1.0 表示不用追（已经够近了）
+double chaseRate(int drift) {
+  if (drift.abs() <= chaseDeadZoneMs) return 1.0;
+  final adjust = (-drift / chaseWindowMs).clamp(-maxChaseRate, maxChaseRate);
+  return 1.0 + adjust;
 }
 
 /// 这一刻配乐轨应该是什么样。[source] 为 null 表示这一刻不该出声。

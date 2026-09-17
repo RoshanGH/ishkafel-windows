@@ -43,6 +43,21 @@ class TrackSegment {
 
   int get endMs => atMs + durationMs;
 
+  /// 换一个源文件，别的一概不动。
+  ///
+  /// 规格化用它把某一段换成同规格的代理（见 [PreviewNormalizer]）——
+  /// 时间轴上的位置、取材点、音量、对应的原片区间**必须原样保留**，
+  /// 代理和原文件是同一段内容的两份编码，时间是对齐的
+  TrackSegment withSource(String next) => TrackSegment(
+        atMs: atMs,
+        durationMs: durationMs,
+        source: next,
+        inMs: inMs,
+        volume: volume,
+        sourceStartMs: sourceStartMs,
+        sourceSpanMs: sourceSpanMs,
+      );
+
   bool covers(int ms) => ms >= atMs && ms < endMs;
 
   /// 成片时刻 [ms] 对应原片的哪一刻。
@@ -215,6 +230,21 @@ class TrackPlan {
   });
 
   static const empty = TrackPlan();
+
+  /// 换一条画面轨，别的一概不动（规格化用，见 [PreviewNormalizer]）
+  TrackPlan withVideo(List<TrackSegment> next) => TrackPlan(
+        video: List.unmodifiable(next),
+        voice: voice,
+        bgm: bgm,
+        bgmMissing: bgmMissing,
+        sourceStemMissing: sourceStemMissing,
+        materialStemMissing: materialStemMissing,
+        skippedEmptyUnits: skippedEmptyUnits,
+        unplayable: unplayable,
+        composedTotalMs: composedTotalMs,
+        unitRanges: unitRanges,
+        voiceVolume: voiceVolume,
+      );
 
   bool get isEmpty => video.isEmpty && voice.isEmpty && bgm.isEmpty;
 

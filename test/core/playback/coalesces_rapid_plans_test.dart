@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/core/playback/follower_track.dart';
 import 'package:ishkafel/core/playback/multitrack_playback.dart';
 import 'package:ishkafel/core/playback/playback_controller.dart';
+import 'package:ishkafel/core/playback/preview_normalizer.dart';
 import 'package:ishkafel/core/playback/track_plan.dart';
 
 /// **连着推好几版方案，只有最后一版该被播出来。**
@@ -28,6 +29,12 @@ class _Fake implements FollowerTrack {
   Future<void> seekMs(int ms) async => _positionMs = ms;
   @override
   Future<void> setVolume(double v) async {}
+
+  /// 追赶用的速率。测试记下来，验「不再硬 seek 而是微调速率」
+  double rate = 1.0;
+
+  @override
+  Future<void> setRate(double value) async => rate = value;
   @override
   int get positionMs => _positionMs;
   @override
@@ -60,10 +67,10 @@ void main() {
 
   test('一口气推四版，中间两版不开文件——播出来的是最后一版', () async {
     // 不 await 前三个：模拟切片一段段就绪时的连推
-    unawaited0(playback.setPlan(planWith('/fit/a.mp4')));
-    unawaited0(playback.setPlan(planWith('/fit/b.mp4')));
-    unawaited0(playback.setPlan(planWith('/fit/c.mp4')));
-    await playback.setPlan(planWith('/fit/d.mp4'));
+    unawaited0(playback.setPlanForTest(planWith('/fit/a.mp4')));
+    unawaited0(playback.setPlanForTest(planWith('/fit/b.mp4')));
+    unawaited0(playback.setPlanForTest(planWith('/fit/c.mp4')));
+    await playback.setPlanForTest(planWith('/fit/d.mp4'));
 
     expect(opensIn(master.calls), lessThanOrEqualTo(2),
         reason: '四版方案开了 ${opensIn(master.calls)} 次文件，'
@@ -74,8 +81,8 @@ void main() {
   });
 
   test('慢慢推（每次都等完）时一版都不少', () async {
-    await playback.setPlan(planWith('/fit/a.mp4'));
-    await playback.setPlan(planWith('/fit/b.mp4'));
+    await playback.setPlanForTest(planWith('/fit/a.mp4'));
+    await playback.setPlanForTest(planWith('/fit/b.mp4'));
 
     expect(opensIn(master.calls), 2,
         reason: '人一次一次调的时候，每一次都该看到结果');
@@ -85,4 +92,12 @@ void main() {
 /// 故意不等：`unawaited` 在 dart:async 里，这里只想表达「推了但不等」
 void unawaited0(Future<void> f) {
   f.catchError((_) {});
+}
+
+/// 测试里推方案：走**和生产同一道闸**，只是挂在「原样放行」档上
+/// （见 [PreviewNormalizer.passthrough]）。这些用例验的是播放器的行为，
+/// 不是规格化本身——规格化有自己的用例
+extension _PushPlan on MultitrackPlayback {
+  Future<void> setPlanForTest(TrackPlan plan) async =>
+      setPlan(await PreviewNormalizer.passthrough().normalize(plan));
 }

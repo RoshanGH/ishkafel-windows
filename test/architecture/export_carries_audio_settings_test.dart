@@ -80,4 +80,39 @@ void main() {
           '${offenders.join('\n')}',
     );
   });
+
+  test('停止只能有一道检查点，而且必须在拉子进程之前', () {
+    // 产品负责人 2026-09-16：「导出一次好几十条，甚至 100 条，让导出可以
+    // 取消，已经导出的就留着当导出成功的物料。」
+    //
+    // 检查点放在「拉子进程之前」有两个作用，缺一不可：
+    // - 导出的时间几乎全花在 ffmpeg 上，一个地方就覆盖切片/拼接/合成/
+    //   人声分离全部环节
+    // - 此刻下一个文件还没开始写，输出目录里不会留下半成品——半成品看起来
+    //   和成片一模一样，留着迟早被当成能交付的东西发出去
+    final runner = File('lib/core/export/export_runner.dart').readAsStringSync();
+
+    final at = runner.indexOf('Future<ProcessResult> _cancellableRun(');
+    expect(at, greaterThan(-1), reason: '这是那道唯一的检查点，改名要一起改守卫');
+    final body = runner.substring(at).split('\n').take(5).join('\n');
+    expect(body.indexOf('throwIfCancelled'), lessThan(body.indexOf('run(')),
+        reason: '检查点挪到进程之后，被停掉的那一条会在输出目录里留下半成品');
+
+    // 声音那条也要挂上——人声分离一条要一两分钟，不挂的话按了停止还得干等
+    expect(runner, contains('run: _cancellableRun'),
+        reason: 'AudioTrackBuilder 要用可停止的那个 runner');
+  });
+
+  test('停止不是失败——两个口径不许混', () {
+    final runner = File('lib/core/export/export_runner.dart').readAsStringSync();
+    expect(runner, contains('on ExportCancelled'),
+        reason: '接住停止要单独标，混进失败清单会让人去查一个根本不存在的原因');
+
+    final dialog =
+        File('lib/features/export/export_dialog.dart').readAsStringSync();
+    expect(dialog, contains('!r.ok && !r.cancelled'),
+        reason: '失败清单要把停止的那些排除掉');
+    expect(dialog, contains('cancelled: results.any((r) => r.cancelled)'),
+        reason: '停下来的那一批照样记进历史——已经导完的就是能交付的物料');
+  });
 }

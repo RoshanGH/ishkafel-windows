@@ -24,19 +24,46 @@ void main() {
     'helperText:',
   ];
 
-  test('lib/features 下给人看的文案里没有 ** 记号', () {
+  /// 这几处的 Markdown 是**有意义的**，不在此列：
+  /// - `lib/core/ai/`、`boundary_reviewer.dart`：给模型的 prompt
+  /// - `lib/core/agent_skill/`：给 Agent 的手册，它读的就是 Markdown
+  ///
+  /// 加新的 prompt / 手册文件要加进来；**加界面文案不许往这儿加**——
+  /// 那是在为了让守卫过而放行一个真问题
+  bool isPromptOrDoc(String path) =>
+      path.startsWith('lib/core/ai/') ||
+      path.startsWith('lib/core/agent_skill/') ||
+      path.endsWith('boundary_reviewer.dart');
+
+  test('给人看的文案里没有 ** 记号', () {
     final bad = <String>[];
-    for (final f in Directory('lib/features')
-        .listSync(recursive: true)
+    // **两个目录一起扫**：只扫 features 的话，摆在界面上、算在 core 里的
+    // 那几句就漏了——导出确认页那句「这 1 个单元用的是**整体替换**」在
+    // subtitle_coverage.dart 里，守卫全绿而真机上星号明晃晃地显示着
+    // （2026-09-16）
+    for (final f in [
+      ...Directory('lib/features').listSync(recursive: true),
+      ...Directory('lib/core').listSync(recursive: true),
+    ]
         .whereType<File>()
-        .where((f) => f.path.endsWith('.dart'))) {
+        .where((f) => f.path.endsWith('.dart'))
+        .where((f) => !isPromptOrDoc(f.path))) {
       final lines = f.readAsStringSync().split('\n');
       for (var i = 0; i < lines.length; i++) {
         final line = lines[i];
         final t = line.trimLeft();
         // 注释里写 **强调** 是给读代码的人看的，不进界面
         if (t.startsWith('//') || t.startsWith('*')) continue;
-        if (!RegExp(r"'[^']*\*\*").hasMatch(line)) continue;
+        // **只看单个字符串字面量内部**，而且要含中文：
+        // - 跨过引号去匹配的话，`'materials', // …**导出读这里**` 这种
+        //   行尾注释会被算成文案
+        // - 手机号脱敏 `138****1234` 里的星号本来就是要显示的内容
+        final hasMarkdownText = RegExp(r"'([^']*)'")
+            .allMatches(line)
+            .map((m) => m.group(1) ?? '')
+            .any((str) =>
+                str.contains('**') && RegExp(r'[\u4e00-\u9fff]').hasMatch(str));
+        if (!hasMarkdownText) continue;
         // 往上看几行：这串字是挂在某个 UI 参数上的吗
         final around = lines
             .sublist((i - 8).clamp(0, i), i + 1)
@@ -45,7 +72,11 @@ void main() {
               return !lt.startsWith('//') && !lt.startsWith('*');
             })
             .join('\n');
-        if (uiKeys.any(around.contains)) {
+        // features 下按「挂在 UI 参数上」判；core 下没有那些参数名，
+        // 但它也不该有面向人的加粗——core 里合法的 Markdown 只有 prompt
+        // 和 Agent 手册，那两类已经排除在外了
+        final isCore = f.path.startsWith('lib/core/');
+        if (isCore || uiKeys.any(around.contains)) {
           bad.add('${f.path}:${i + 1}  ${line.trim()}');
         }
       }

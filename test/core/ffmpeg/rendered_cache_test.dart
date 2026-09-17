@@ -103,20 +103,29 @@ void main() {
       expect(env.calls.single.last, endsWith('.mp4'),
           reason: '写成 xxx.mp4.part 会让 ffmpeg 报「Unable to choose an '
               'output format」——真机上就这么炸的');
-      expect(env.calls.single.last, contains('.part.'));
+      // `.part` 后面跟一个序号：同一个 key 可能被两处同时渲（工作台和
+      // 编导台各持一个缓存实例），临时名一样的话两边写同一个文件，
+      // 先 rename 的把文件搬走，后一个当场炸（2026-09-17 真机日志）
+      expect(env.calls.single.last, contains('.part'));
+      expect(env.calls.single.last, isNot(contains('.part.')),
+          reason: '固定的临时名会让并发的两次渲染互相踩');
     });
 
     test('上次留下的 .part 不算命中', () async {
       final env = make();
-      final temp = env.cache
+      // 上一轮崩在半路留下的临时文件
+      final stale = env.cache
           .tempPathFor(key: 'k', prefix: 'clip', extension: 'mp4');
-      File(temp).writeAsStringSync('半截');
+      File(stale).writeAsStringSync('半截');
 
       final path = await render(env.cache, 'k');
 
       expect(env.calls, hasLength(1), reason: '半截文件不能当成已经有了');
       expect(File(path).existsSync(), isTrue);
-      expect(File(temp).existsSync(), isFalse, reason: '改名之后半截就没了');
+      expect(path, isNot(stale), reason: '成品名和临时名本来就不是一个');
+      // 陈旧的 .part 由 keepOnly 收走——它不在这一轮 _touched 里
+      env.cache.keepOnly();
+      expect(File(stale).existsSync(), isFalse);
     });
 
     test('0 字节的成品也不算命中', () async {
@@ -168,5 +177,44 @@ void main() {
     expect(RenderedCache.digest('a'), RenderedCache.digest('a'));
     expect(RenderedCache.digest('a'), isNot(RenderedCache.digest('b')));
     expect(RenderedCache.digest('a'), hasLength(16));
+  });
+
+  group('并发渲同一份', () {
+    /// 2026-09-17 真机日志：
+    /// 「生成预览代理失败，先按原样用（接缝处可能有一下顿挫）：
+    ///   Cannot rename file to '.../proxy_ed5b44a484e75b8d.mp4',
+    ///   path = '.../proxy_ed5b44a484e75b8d.part.mp4'」
+    ///
+    /// 两处同时要同一份代理（预览重推 + 素材固定），临时名一样，先 rename
+    /// 的那个把文件搬走，后一个当场炸——那一段于是退回原规格，
+    /// **接缝处照旧闪**。规格化那道闸装了，却被这个竞态放空。
+    test('同一个 key 并发要两次：只跑一次 ffmpeg，两边都拿到成品', () async {
+      final env = make();
+
+      final both = await Future.wait([
+        render(env.cache, 'same'),
+        render(env.cache, 'same'),
+      ]);
+
+      expect(both.first, both.last);
+      expect(env.calls, hasLength(1), reason: '并发转两遍是白烧一倍 CPU');
+      expect(File(both.first).existsSync(), isTrue);
+    });
+
+    test('两个实例各渲各的：临时名不许撞，两边都要成功', () async {
+      // 工作台和编导台各持一个 RenderedCache，内存里的去重表管不着对方
+      final a = make();
+      final b = make();
+
+      final both = await Future.wait([
+        render(a.cache, 'same'),
+        render(b.cache, 'same'),
+      ]);
+
+      expect(both.first, both.last, reason: '同一个 key 就是同一份成品');
+      expect(File(both.first).existsSync(), isTrue);
+      expect(a.calls.single.last, isNot(b.calls.single.last),
+          reason: '临时名一样的话，两边会写同一个文件、互相踩');
+    });
   });
 }

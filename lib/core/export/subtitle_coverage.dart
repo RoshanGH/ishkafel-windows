@@ -50,8 +50,12 @@ String? subtitleGapNotice(List<UnitReplacement> replacements) {
   final gaps = subtitleCoverage(replacements).unitsWithout;
   if (gaps.isEmpty) return null;
   final labels = [for (final i in gaps) 'U${i + 1}'].join('、');
-  return '这 ${gaps.length} 个单元用的是**整体替换**（$labels），'
-      '成片里那几段**不会有台词字幕**——整体替换原样接上、时长随候选，'
-      '和原坑位对不齐，按原片时间戳算的字幕没法直接烧上去。'
+  // **不许用 ** 加粗**：这句话是摆在导出确认页上给人看的，而 Text 一个字
+  // 都不解析，星号会原样显示出来（2026-09-16 真机就是这样）。要强调就把
+  // 结论放到句首，或者用「」
+  return '$labels 这 ${gaps.length} 个单元用的是「整体替换」，'
+      '成片里那几段没有台词字幕。'
+      '整体替换原样接上、时长随候选，和原坑位对不齐，'
+      '按原片时间戳算的字幕没法直接烧上去。'
       '要这几段也有字幕，改用镜头替换（它会变速对齐回原坑位并重渲字幕）。';
 }

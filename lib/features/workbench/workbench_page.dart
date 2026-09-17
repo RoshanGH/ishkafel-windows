@@ -61,6 +61,7 @@ import '../../core/ffmpeg/proxy_spec.dart';
 import '../../core/ffmpeg/rendered_cache.dart';
 import '../../core/playback/media_kit_follower.dart';
 import '../../core/playback/multitrack_playback.dart';
+import '../../core/playback/preview_normalizer.dart';
 import 'preview_tracks.dart';
 import 'speed_fitter.dart';
 
@@ -638,6 +639,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
         speedFitter: _speedFitter = _buildSpeedFitter(),
         gapClip: _buildGapClip(),
         silentClip: _buildSilentClip(),
+        normalizer: _buildNormalizer(),
       )
         ..addListener(_onTracksChanged)
         ..onNeedsRebuild = _syncPreviewAudio;
@@ -2942,6 +2944,22 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
       fetch: (id) async => _proxyBuilder(dataDir)
           .build(path: await fetch(_task.id, id), frameRate: _frameRateArg),
       cacheDir: TaskMedia(dataDir: dataDir, taskId: _task.id).materialsDir,
+    );
+  }
+
+  /// 画面轨的规格化闸（见 [PreviewNormalizer]）。
+  ///
+  /// 复用已有的 [ProxyBuilder]：已经是预览规格的一个字节都不动，不合规的
+  /// 取它的代理（内容指纹一样就直接命中缓存，不重转）。没有数据目录
+  /// （测试环境）时原样放行
+  PreviewNormalizer _buildNormalizer() {
+    final dataDir = ref.read(dataDirProvider);
+    if (dataDir == null) return PreviewNormalizer.passthrough();
+    final builder = _proxyBuilder(dataDir);
+    return PreviewNormalizer(
+      probe: builder.probe,
+      toProxy: (path) =>
+          builder.build(path: path, frameRate: _frameRateArg),
     );
   }
 
