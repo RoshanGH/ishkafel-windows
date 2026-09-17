@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ishkafel/core/update/release_manifest.dart';
 import 'package:ishkafel/core/update/update_service.dart';
@@ -58,6 +60,56 @@ void main() {
           signedManifest.replaceFirst('secure update', 'tampered'),
     );
     expect(found, isNull);
+  });
+
+  test('真实 HTTP 清单按 UTF-8 解码，中文更新说明不能破坏 JSON', () async {
+    final algorithm = Ed25519();
+    final keyPair = await algorithm.newKeyPairFromSeed(
+      List<int>.generate(32, (index) => index),
+    );
+    final publicKey = await keyPair.extractPublicKey();
+    const unsigned = ReleaseManifest(
+      version: '0.1.239',
+      objectKey:
+          'windows/releases/ishkafel-windows-0.1.239-x64-portable.zip',
+      sha256:
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      sizeBytes: 100,
+      notes: '中文更新说明：修好了真实升级。',
+      signature: '',
+    );
+    final signature = await algorithm.sign(
+      unsigned.signingPayload,
+      keyPair: keyPair,
+    );
+    final manifest = ReleaseManifest(
+      version: unsigned.version,
+      objectKey: unsigned.objectKey,
+      sha256: unsigned.sha256,
+      sizeBytes: unsigned.sizeBytes,
+      notes: unsigned.notes,
+      signature: base64Encode(signature.bytes),
+    );
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(server.close);
+    server.listen((request) async {
+      request.response.headers.contentType = ContentType.json;
+      request.response.add(utf8.encode(jsonEncode(manifest.toJson())));
+      await request.response.close();
+    });
+    final service = UpdateService(
+      workDir: Directory('${dir.path}/work'),
+      currentApp: Directory('${dir.path}/ishkafel')..createSync(),
+      signingPublicKey: base64Encode(publicKey.bytes),
+    );
+
+    final found = await service.check(
+      current: '0.1.238',
+      manifestUrl: 'http://${server.address.host}:${server.port}/latest.json',
+    );
+
+    expect(found?.version, '0.1.239');
+    expect(found?.notes, contains('中文更新说明'));
   });
 
   test('版本比较是核心：同版本不提示，旧版本不提示', () {

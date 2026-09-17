@@ -54,6 +54,18 @@ class AppUpdater {
     List<String> arguments,
     ProcessStartMode mode,
   ) async {
+    if (mode == ProcessStartMode.normal) {
+      final result = await Process.run(executable, arguments);
+      if (result.exitCode != 0) {
+        throw ProcessException(
+          executable,
+          arguments,
+          '${result.stderr}',
+          result.exitCode,
+        );
+      }
+      return;
+    }
     await Process.start(executable, arguments, mode: mode);
   }
 
@@ -198,6 +210,9 @@ $stillRunning = Get-Process -Id $processId -ErrorAction SilentlyContinue
 if ($stillRunning) {
   exit 2
 }
+# Detached PowerShell inherits the app's working directory. Windows refuses
+# to rename a directory while the updater process itself is standing in it.
+Set-Location -LiteralPath $env:TEMP
 $target = '''
             '${_psQuote(targetApp)}\n'
             r'''$fresh = '''
@@ -266,20 +281,26 @@ exit 0
     );
     if (!windows) await run('chmod', ['+x', script.path]);
     AppLog.info('自动更新：交棒给替换脚本 ${script.path}');
-    // detached：这个进程马上就要退出了，脚本必须活下去
+    // Windows 的 CREATE_NEW_PROCESS_GROUP 仍可能继承宿主 Job；主程序退出时，
+    // 所谓 detached 子进程会被一起回收。让 Explorer 的 Shell COM 代为创建
+    // 隐藏 PowerShell，才能真正脱离父进程继续替换。
+    final childArguments = '-NoProfile -NonInteractive '
+        '-ExecutionPolicy Bypass -File "${script.path}"';
+    final shellCommand = r'$shell = New-Object -ComObject Shell.Application; '
+        r"$shell.ShellExecute('powershell.exe', "
+        '${_psQuote(childArguments)}, '
+        r"$env:TEMP, 'open', 0)";
     await launch(
       windows ? 'powershell.exe' : '/bin/sh',
       windows
           ? [
               '-NoProfile',
               '-NonInteractive',
-              '-ExecutionPolicy',
-              'Bypass',
-              '-File',
-              script.path,
+              '-Command',
+              shellCommand,
             ]
           : [script.path],
-      ProcessStartMode.detached,
+      windows ? ProcessStartMode.normal : ProcessStartMode.detached,
     );
   }
 

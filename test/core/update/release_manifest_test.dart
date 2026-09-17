@@ -41,6 +41,17 @@ void main() {
     );
   });
 
+  test('传输清单只含 ASCII，0.1.238 的系统编码也能安全读取中文说明', () {
+    final manifest = ReleaseManifest.tryParse(
+      jsonOf({...good, 'notes': '中文更新说明'}),
+    )!;
+
+    final encoded = manifest.toTransportJson(indented: true);
+
+    expect(encoded.codeUnits.every((unit) => unit <= 0x7f), isTrue);
+    expect(ReleaseManifest.tryParse(encoded)?.notes, '中文更新说明');
+  });
+
   test('发布公钥能验过真实 Ed25519 清单签名', () async {
     final m = ReleaseManifest.tryParse(jsonOf(good))!;
     expect(await m.verifySignature(publicKey), isTrue);

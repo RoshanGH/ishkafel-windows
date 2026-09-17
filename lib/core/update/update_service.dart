@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -154,7 +155,7 @@ class UpdateService {
     try {
       final res = await (await client.getUrl(Uri.parse(url))).close();
       if (res.statusCode != HttpStatus.ok) return null;
-      return await res.transform(const SystemEncoding().decoder).join();
+      return await res.transform(utf8.decoder).join();
     } finally {
       client.close(force: true);
     }

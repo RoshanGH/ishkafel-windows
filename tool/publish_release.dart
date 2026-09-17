@@ -75,7 +75,7 @@ Future<int> main(List<String> args) async {
     stderr.writeln('本地回验发布清单失败，拒绝上传。');
     return 1;
   }
-  final manifest = const JsonEncoder.withIndent('  ').convert(release.toJson());
+  final manifest = release.toTransportJson(indented: true);
 
   if (dryRun) {
     stdout.writeln(manifest);

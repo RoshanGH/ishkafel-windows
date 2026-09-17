@@ -178,9 +178,17 @@ void main() {
       );
       expect(script, contains(r'Start-Process -FilePath $exe'));
     });
+
+    test('替换前离开程序目录，避免 PowerShell 自己锁住待移动目录', () {
+      expect(script, contains(r'Set-Location -LiteralPath $env:TEMP'));
+      expect(
+        script.indexOf(r'Set-Location -LiteralPath $env:TEMP'),
+        lessThan(script.indexOf(r'Move-Item -LiteralPath $target')),
+      );
+    });
   });
 
-  test('Windows handoff 使用真正 detached 模式避免弹控制台', () async {
+  test('Windows handoff 由 Explorer Shell 交棒，父进程退出后脚本仍继续', () async {
     String? executable;
     List<String>? arguments;
     ProcessStartMode? mode;
@@ -199,8 +207,12 @@ void main() {
       workDir: work,
     );
     expect(executable, 'powershell.exe');
-    expect(arguments, contains('-File'));
-    expect(mode, ProcessStartMode.detached);
+    final command = arguments!.last;
+    expect(command, contains('Shell.Application'));
+    expect(command, contains('ShellExecute'));
+    expect(command, contains('replace.ps1'));
+    expect(command, contains("'open', 0"));
+    expect(mode, ProcessStartMode.normal);
   });
 
   test('装在没权限的地方：先问清楚，别替换到一半才发现', () {

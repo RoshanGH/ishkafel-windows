@@ -46,6 +46,23 @@ class ReleaseManifest {
 
   Map<String, dynamic> toJson() => {...unsignedJson, 'signature': signature};
 
+  /// 发布时把非 ASCII 字符写成 `\\uXXXX`。
+  ///
+  /// 0.1.238 在 Windows 上曾用系统代码页解码 HTTP 正文；直接传 UTF-8 中文会
+  /// 让那一版无法读取清单。JSON 转义后语义与签名正文不变，同时旧版也只需处理
+  /// ASCII 字节。新客户端仍然按 UTF-8 解码，兼容这两种表示。
+  String toTransportJson({bool indented = false}) {
+    final encoded = (indented
+            ? const JsonEncoder.withIndent('  ')
+            : const JsonEncoder())
+        .convert(toJson());
+    return encoded.replaceAllMapped(RegExp(r'[^\x00-\x7F]'), (match) {
+      return match[0]!.codeUnits
+          .map((unit) => '\\u${unit.toRadixString(16).padLeft(4, '0')}')
+          .join();
+    });
+  }
+
   /// 签名正文只由这一处生成，避免发布端与客户端字段顺序不一致。
   List<int> get signingPayload => utf8.encode(jsonEncode(unsignedJson));
 
