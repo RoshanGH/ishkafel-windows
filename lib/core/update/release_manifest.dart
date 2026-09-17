@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:cryptography/cryptography.dart';
+
 /// 「最新版是哪一版」——放在对象存储上的一份小清单。
 ///
 /// **它本身不带下载地址**：包是私有的，地址由 app 拿只读凭据现换预签名 URL
@@ -22,21 +24,49 @@ class ReleaseManifest {
   /// 这一版改了什么——直接取 CHANGELOG 里那一节，给人看
   final String notes;
 
+  /// 发布机对其余五个字段的 Ed25519 签名（Base64）。
+  final String signature;
+
   const ReleaseManifest({
     required this.version,
     required this.objectKey,
     required this.sha256,
     required this.sizeBytes,
     this.notes = '',
+    required this.signature,
   });
 
-  Map<String, dynamic> toJson() => {
-        'version': version,
-        'objectKey': objectKey,
-        'sha256': sha256,
-        'sizeBytes': sizeBytes,
-        'notes': notes,
-      };
+  Map<String, dynamic> get unsignedJson => {
+    'version': version,
+    'objectKey': objectKey,
+    'sha256': sha256,
+    'sizeBytes': sizeBytes,
+    'notes': notes,
+  };
+
+  Map<String, dynamic> toJson() => {...unsignedJson, 'signature': signature};
+
+  /// 签名正文只由这一处生成，避免发布端与客户端字段顺序不一致。
+  List<int> get signingPayload => utf8.encode(jsonEncode(unsignedJson));
+
+  Future<bool> verifySignature(String publicKeyBase64) async {
+    try {
+      final publicKeyBytes = base64Decode(publicKeyBase64);
+      final signatureBytes = base64Decode(signature);
+      if (publicKeyBytes.length != 32 || signatureBytes.length != 64) {
+        return false;
+      }
+      return Ed25519().verify(
+        signingPayload,
+        signature: Signature(
+          signatureBytes,
+          publicKey: SimplePublicKey(publicKeyBytes, type: KeyPairType.ed25519),
+        ),
+      );
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// 宽松解析：**任何一处不对就返回 null**，由调用方当作「没查到新版本」。
   /// 清单读错比读不到危险得多——照着一份坏清单去下载、替换，
@@ -49,18 +79,29 @@ class ReleaseManifest {
       final key = json['objectKey'];
       final sum = json['sha256'];
       final size = json['sizeBytes'];
+      final signature = json['signature'];
       if (version is! String || !isVersion(version)) return null;
-      if (key is! String || key.trim().isEmpty) return null;
+      if (key is! String ||
+          !RegExp(r'^windows/releases/[A-Za-z0-9._-]+\.zip$').hasMatch(key)) {
+        return null;
+      }
       if (sum is! String || !RegExp(r'^[0-9a-f]{64}$').hasMatch(sum)) {
         return null;
       }
       if (size is! int || size <= 0) return null;
+      if (signature is! String) return null;
+      try {
+        if (base64Decode(signature).length != 64) return null;
+      } catch (_) {
+        return null;
+      }
       return ReleaseManifest(
         version: version,
         objectKey: key,
         sha256: sum,
         sizeBytes: size,
         notes: json['notes'] is String ? json['notes'] as String : '',
+        signature: signature,
       );
     } catch (_) {
       return null;
