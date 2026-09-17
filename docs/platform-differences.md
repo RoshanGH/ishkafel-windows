@@ -21,6 +21,7 @@
 | 提权 | 默认无提权用户级安装，写入 `%LOCALAPPDATA%` 并更新用户 PATH | 普通用户可安装，系统目录不被静默修改 |
 | 隐私与信誉 | Windows 没有 macOS TCC 流程；需处理 Defender/SmartScreen 与未签名提示 | 已签名包不出现未知发布者，失败提示可操作 |
 | 日志 | GUI 无控制台时写入可轮转文件日志，stderr 仅作辅助 | 打包版错误可定位，日志不包含 `.secrets` |
+| 预览体检 | 使用 `scripts/windows/preview_health.ps1` 驱动 Windows Release 真播；判据继续复用 `tool/preview_health.dart` | 和 Mac 一样检查画面重建、硬跳、规格、代理失败、音画偏差和时钟卡顿，不能只跑单元测试 |
 
 ## 同步时的判定
 
