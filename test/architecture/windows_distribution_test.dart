@@ -50,6 +50,37 @@ void main() {
     expect(config, contains("defaultValue: 'windows/latest.json'"));
   });
 
+  test('员工包只注入发布公钥，发布私钥只由发布工具读取', () {
+    final build = File('scripts/windows/build_app.ps1').readAsStringSync();
+    final publisher = File('tool/publish_release.dart').readAsStringSync();
+    expect(build, contains('windows_update_signing_public_key'));
+    expect(build, contains('UPDATE_SIGNING_PUBLIC_KEY'));
+    expect(build, isNot(contains('windows_update_signing_private_key')));
+    expect(publisher, contains('windows_update_signing_private_key'));
+    expect(publisher, contains('Ed25519'));
+    expect(publisher, contains('signature:'));
+  });
+
+  test('发布先传版本包，再写稳定清单和旧版兼容清单', () {
+    final publisher = File('tool/publish_release.dart').readAsStringSync();
+    expect(publisher, contains("'windows/latest.json'"));
+    expect(publisher, contains("'latest-windows.json'"));
+    expect(publisher, contains('--package-dir'));
+    expect(
+      publisher.indexOf("contentType: 'application/zip'"),
+      lessThan(publisher.indexOf("'windows/latest.json'")),
+    );
+  });
+
+  test('离线签名密钥工具存在，且拒绝覆盖已有私钥', () {
+    final file = File('tool/update_signing_key.dart');
+    expect(file.existsSync(), isTrue);
+    final source = file.readAsStringSync();
+    expect(source, contains('windows_update_signing_private_key'));
+    expect(source, contains('windows_update_signing_public_key'));
+    expect(source, contains('Refusing to overwrite'));
+  });
+
   test('MSIX 工具来源固定且下载后先验 SHA-256', () {
     expect(
       File('third_party/windows_sdk/build_tools.json').existsSync(),

@@ -1,11 +1,18 @@
 ﻿param(
     [ValidateSet('Debug', 'Release')]
-    [string]$Mode = 'Debug'
+    [string]$Mode = 'Debug',
+    [string]$ManifestKey = 'windows/latest.json',
+    [string]$SecretsDirectory = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$secretDir = Join-Path $projectRoot '.secrets'
+if ([string]::IsNullOrWhiteSpace($SecretsDirectory)) {
+    $secretDir = Join-Path $projectRoot '.secrets'
+}
+else {
+    $secretDir = (Resolve-Path -LiteralPath $SecretsDirectory).Path
+}
 
 function Read-Secret([string]$Name, [bool]$Required) {
     $path = Join-Path $secretDir $Name
@@ -18,11 +25,6 @@ function Read-Secret([string]$Name, [bool]$Required) {
     return (Get-Content -Raw -LiteralPath $path).Trim()
 }
 
-$updateManifestKey = Read-Secret 'update_tos_manifest_key' $false
-if ([string]::IsNullOrWhiteSpace($updateManifestKey)) {
-    $updateManifestKey = 'windows/latest.json'
-}
-
 $values = [ordered]@{
     ARK_API_KEY         = Read-Secret 'ark_api_key' $true
     SPEECH_APP_ID       = Read-Secret 'speech_app_id' $true
@@ -32,7 +34,8 @@ $values = [ordered]@{
     UPDATE_TOS_ENDPOINT = Read-Secret 'update_tos_endpoint' $false
     UPDATE_TOS_AK       = Read-Secret 'update_tos_ak' $false
     UPDATE_TOS_SK       = Read-Secret 'update_tos_sk' $false
-    UPDATE_TOS_MANIFEST_KEY = $updateManifestKey
+    UPDATE_TOS_MANIFEST_KEY = $ManifestKey
+    UPDATE_SIGNING_PUBLIC_KEY = Read-Secret 'windows_update_signing_public_key' $true
 }
 
 $arguments = @('build', 'windows', "--$($Mode.ToLowerInvariant())")
