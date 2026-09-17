@@ -93,6 +93,28 @@ void main() {
     );
   });
 
+  test('Windows 内部包可由已验真的发布清单授权，不强迫购买代码证书', () async {
+    final u = AppUpdater(
+      operatingSystem: 'windows',
+      run: (_, _) async => ProcessResult(0, 1, '', 'NotSigned'),
+    );
+    await u.verifySignature(
+      Directory('${dir.path}/windows-app')..createSync(),
+      manifestAuthenticated: true,
+    );
+  });
+
+  test('macOS 即使清单验真仍必须通过 codesign', () async {
+    final u = updaterWith((_, _) async => ProcessResult(0, 1, '', 'bad'));
+    await expectLater(
+      u.verifySignature(
+        Directory('${dir.path}/x.app')..createSync(),
+        manifestAuthenticated: true,
+      ),
+      throwsA(isA<UpdateException>()),
+    );
+  });
+
   group('替换脚本', () {
     final script = AppUpdater(operatingSystem: 'macos').replaceScript(
       newApp: '/tmp/new/ishkafel.app',

@@ -23,12 +23,19 @@ class UpdateConfig {
   static const accessKey = String.fromEnvironment('UPDATE_TOS_AK');
   static const secretKey = String.fromEnvironment('UPDATE_TOS_SK');
 
+  /// 发布签名公钥可以公开，内置在客户端用于证明清单确实来自发布机。
+  /// 对应私钥绝不能通过 dart-define 进入产物。
+  static const signingPublicKey = String.fromEnvironment(
+    'UPDATE_SIGNING_PUBLIC_KEY',
+  );
+
   static bool get enabled =>
       region.isNotEmpty &&
       bucket.isNotEmpty &&
       endpoint.isNotEmpty &&
       accessKey.isNotEmpty &&
-      secretKey.isNotEmpty;
+      secretKey.isNotEmpty &&
+      signingPublicKey.isNotEmpty;
 
   /// 没配全时说清缺哪一项——排查时不用去翻构建脚本
   static String get missingHint {
@@ -38,6 +45,7 @@ class UpdateConfig {
       if (endpoint.isEmpty) 'UPDATE_TOS_ENDPOINT',
       if (accessKey.isEmpty) 'UPDATE_TOS_AK',
       if (secretKey.isEmpty) 'UPDATE_TOS_SK',
+      if (signingPublicKey.isEmpty) 'UPDATE_SIGNING_PUBLIC_KEY',
     ];
     return missing.isEmpty ? '' : '缺少：${missing.join('、')}';
   }

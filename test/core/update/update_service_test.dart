@@ -9,6 +9,9 @@ import 'package:ishkafel/core/update/update_service.dart';
 /// 网络不通、清单读不懂、拿到一份坏 JSON——这些都不该弹错误框吓人。
 /// 而「有新版本」必须确实比手上这一版新，不能反复提示人升级同一版。
 void main() {
+  const signingPublicKey = '11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=';
+  const signedManifest = '''
+{"version":"0.1.238","objectKey":"windows/releases/ishkafel-windows-0.1.238-x64-portable.zip","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sizeBytes":46000000,"notes":"secure update","signature":"mI1gftw+NbFwZxkHrU0EPdFtDtLi4h9/kP91pxL5EMTwZzFi7Q8wViyLXbGYMY0xdNO3Ng8++vs/ckeGv2xWDw=="}''';
   late Directory dir;
   setUp(() => dir = Directory.systemTemp.createTempSync('svc'));
   tearDown(() => dir.deleteSync(recursive: true));
@@ -26,6 +29,35 @@ void main() {
   test('没配更新地址时整个功能关掉——不能留一个点了永远报错的按钮', () async {
     // 测试环境没有 --dart-define，UpdateConfig.enabled 必然是 false
     expect(await svc().check(fetch: (_) async => manifest('9.9.9')), isNull);
+  });
+
+  test('签名正确的 Windows 清单才会进入版本比较', () async {
+    final service = UpdateService(
+      workDir: Directory('${dir.path}/work'),
+      currentApp: Directory('${dir.path}/ishkafel')..createSync(),
+      signingPublicKey: signingPublicKey,
+    );
+    final found = await service.check(
+      current: '0.1.237',
+      manifestUrl: 'https://updates.invalid/windows/latest.json',
+      fetch: (_) async => signedManifest,
+    );
+    expect(found?.version, '0.1.238');
+  });
+
+  test('清单内容被改动后即使版本更高也必须忽略', () async {
+    final service = UpdateService(
+      workDir: Directory('${dir.path}/work'),
+      currentApp: Directory('${dir.path}/ishkafel')..createSync(),
+      signingPublicKey: signingPublicKey,
+    );
+    final found = await service.check(
+      current: '0.1.237',
+      manifestUrl: 'https://updates.invalid/windows/latest.json',
+      fetch: (_) async =>
+          signedManifest.replaceFirst('secure update', 'tampered'),
+    );
+    expect(found, isNull);
   });
 
   test('版本比较是核心：同版本不提示，旧版本不提示', () {

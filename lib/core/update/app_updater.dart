@@ -134,7 +134,10 @@ class AppUpdater {
 
   /// 验签。**换上去之前验**——换完再发现签名坏了，人手上就只剩一个
   /// 打不开的 app 了
-  Future<void> verifySignature(Directory app) async {
+  Future<void> verifySignature(
+    Directory app, {
+    bool manifestAuthenticated = false,
+  }) async {
     // 参数**手跑过**才敢写：codesign 没有 `-q`，给了它会 usage 报错退出 2,
     // 于是任何包都被判成「签名不过」，人永远升不上去（这一条是真机验证抓到的）
     final r = operatingSystem == 'windows'
@@ -147,7 +150,8 @@ class AppUpdater {
                 "-ne 'Valid') { exit 1 }",
           ])
         : await run('codesign', ['--verify', '--deep', app.path]);
-    if (r.exitCode != 0) {
+    if (r.exitCode != 0 &&
+        !(operatingSystem == 'windows' && manifestAuthenticated)) {
       throw UpdateException(
         '新版本的签名验证没通过，没有替换。'
         '这可能是下载被中间人改过——请找发包的人确认。',

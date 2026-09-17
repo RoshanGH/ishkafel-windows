@@ -64,16 +64,19 @@ class UpdateService {
 
   /// 当前这个 app 在哪儿。默认从运行中的可执行文件往上找
   final Directory currentApp;
+  final String signingPublicKey;
 
   UpdateService({
     AppUpdater? updater,
     Directory? workDir,
     Directory? currentApp,
+    String? signingPublicKey,
   }) : updater = updater ?? AppUpdater(),
        workDir =
            workDir ??
            Directory(p.join(Directory.systemTemp.path, 'ishkafel_update')),
-       currentApp = currentApp ?? _runningApp();
+       currentApp = currentApp ?? _runningApp(),
+       signingPublicKey = signingPublicKey ?? UpdateConfig.signingPublicKey;
 
   /// `<app>/Contents/MacOS/ishkafel` → `<app>`
   static Directory _runningApp() => runningAppFrom(Platform.resolvedExecutable);
@@ -115,20 +118,28 @@ class UpdateService {
   Future<ReleaseManifest?> check({
     Future<String?> Function(String url)? fetch,
     String current = appVersion,
+    String? manifestUrl,
   }) async {
-    if (!UpdateConfig.enabled) return null;
+    if (signingPublicKey.isEmpty) return null;
+    if (manifestUrl == null && !UpdateConfig.enabled) return null;
     try {
       // 清单也私有：用同一对只读凭据换一条短效链接。有效期给得很短——
       // 它只是拿来读一次的
-      final url = _signer.presignGet(
-        UpdateConfig.manifestKey,
-        ttl: const Duration(minutes: 5),
-      );
+      final url =
+          manifestUrl ??
+          _signer.presignGet(
+            UpdateConfig.manifestKey,
+            ttl: const Duration(minutes: 5),
+          );
       final raw = await (fetch ?? _fetch)(url);
       if (raw == null) return null;
       final m = ReleaseManifest.tryParse(raw);
       if (m == null) {
         AppLog.warn('更新清单读不懂，当作没有新版本');
+        return null;
+      }
+      if (!await m.verifySignature(signingPublicKey)) {
+        AppLog.warn('更新清单签名无效，当作没有新版本');
         return null;
       }
       return isNewerVersion(m.version, current) ? m : null;
@@ -158,6 +169,13 @@ class UpdateService {
     required Future<void> Function() onExit,
   }) async {
     try {
+      final manifestAuthenticated = await release.verifySignature(
+        signingPublicKey,
+      );
+      if (!manifestAuthenticated) {
+        onState(const UpdateFailed('更新清单签名无效，已停止安装。请联系发包的人确认。'));
+        return;
+      }
       if (!updater.canReplace(currentApp)) {
         onState(UpdateFailed(replacePermissionMessage(currentApp)));
         return;
@@ -186,7 +204,10 @@ class UpdateService {
         zip,
         Directory(p.join(workDir.path, 'unpacked')),
       );
-      await updater.verifySignature(app);
+      await updater.verifySignature(
+        app,
+        manifestAuthenticated: manifestAuthenticated,
+      );
 
       await updater.handOff(
         newApp: app,
