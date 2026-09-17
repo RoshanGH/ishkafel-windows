@@ -52,5 +52,22 @@ Future<ProcessResult> _analyze(File log) => Process.run('powershell.exe', [
   '-AnalyzeLogPath',
   log.path,
   '-DartExecutable',
-  'dart',
+  _dartExecutable(),
 ], workingDirectory: Directory.current.path);
+
+String _dartExecutable() {
+  final currentExecutable = File(Platform.resolvedExecutable);
+  if (p.basenameWithoutExtension(currentExecutable.path) == 'dart') {
+    return currentExecutable.path;
+  }
+
+  var directory = currentExecutable.parent;
+  while (directory.parent.path != directory.path) {
+    final candidate = File(
+      p.join(directory.path, 'bin', 'cache', 'dart-sdk', 'bin', 'dart.exe'),
+    );
+    if (candidate.existsSync()) return candidate.path;
+    directory = directory.parent;
+  }
+  throw StateError('找不到 Flutter SDK 自带的 dart.exe');
+}
