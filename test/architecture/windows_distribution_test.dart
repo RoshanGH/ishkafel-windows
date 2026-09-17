@@ -81,6 +81,15 @@ void main() {
     expect(source, contains('Refusing to overwrite'));
   });
 
+  test('安全更新引导版版本号在代码、pubspec 和变更记录中一致', () {
+    final appVersion = File('lib/core/app_version.dart').readAsStringSync();
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    final changelog = File('CHANGELOG.md').readAsStringSync();
+    expect(appVersion, contains("appVersion = '0.1.238'"));
+    expect(pubspec, contains('version: 0.1.238+238'));
+    expect(changelog, startsWith('## 0.1.238'));
+  });
+
   test('MSIX 工具来源固定且下载后先验 SHA-256', () {
     expect(
       File('third_party/windows_sdk/build_tools.json').existsSync(),

@@ -47,6 +47,7 @@ uv tool install "audio-separator[cpu]"
 .secrets/ark_api_key           # 火山方舟：打标、语义切分、画面复核
 .secrets/speech_app_id         # 语音技术：ASR、换音色合成
 .secrets/speech_access_token
+.secrets/windows_update_signing_public_key  # 更新清单验签公钥，可内置
 ```
 
 正式包由 `scripts\windows\build_app.ps1` 在编译期注入。凭据不全时应用可以做无凭据
@@ -72,3 +73,6 @@ Windows SDK Build Tools 从 Microsoft 官方 NuGet 固定版本下载并校验�
 
 Windows 自动更新发布便携 ZIP，并固定使用 `windows/latest.json` 与
 `windows/releases/`；即使 Mac 与 Windows 共用同一个私有 TOS bucket，也不会互相覆盖更新清单。
+清单使用 Ed25519 签名：`dart run tool/update_signing_key.dart` 只需初始化一次；私钥
+仅由发布工具读取，员工软件只内置公钥。`0.1.238` 是一次性手动安装的引导版，之后
+可在 App 内完成下载、验签、替换和重启。

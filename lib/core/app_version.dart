@@ -5,4 +5,4 @@
 /// **单独一个文件、且不依赖 Flutter**：CLI 也要用它（`ishkafel skill` 写进
 /// 说明书里做版本判断）。放在 settings_providers.dart 里的话，CLI 的依赖树
 /// 会被拖进整个 Flutter——`dart build cli` 会在 FFI 那一层直接崩掉。
-const String appVersion = '0.1.237';
+const String appVersion = '0.1.238';
