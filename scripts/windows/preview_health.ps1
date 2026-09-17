@@ -110,8 +110,62 @@ public static class IshkafelPreviewHealthWindow {
     [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr hWnd, int command);
 
-    [DllImport("user32.dll")]
-    public static extern bool PostMessage(IntPtr hWnd, uint message, UIntPtr wParam, IntPtr lParam);
+    [StructLayout(LayoutKind.Sequential)]
+    public struct INPUT {
+        public uint type;
+        public InputUnion value;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    public struct InputUnion {
+        [FieldOffset(0)]
+        public KEYBDINPUT keyboard;
+
+        [FieldOffset(0)]
+        public MOUSEINPUT mouse;
+
+        [FieldOffset(0)]
+        public HARDWAREINPUT hardware;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct KEYBDINPUT {
+        public ushort virtualKey;
+        public ushort scanCode;
+        public uint flags;
+        public uint time;
+        public UIntPtr extraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MOUSEINPUT {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint flags;
+        public uint time;
+        public UIntPtr extraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct HARDWAREINPUT {
+        public uint message;
+        public ushort parameterLow;
+        public ushort parameterHigh;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint SendInput(uint count, INPUT[] inputs, int size);
+
+    public static bool SendSpace() {
+        var inputs = new INPUT[2];
+        inputs[0].type = 1;
+        inputs[0].value.keyboard.virtualKey = 0x20;
+        inputs[1].type = 1;
+        inputs[1].value.keyboard.virtualKey = 0x20;
+        inputs[1].value.keyboard.flags = 0x0002;
+        return SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT))) == 2;
+    }
 }
 '@
 }
@@ -125,15 +179,12 @@ function Send-PlaybackSpace {
     }
     $handle = $Process.MainWindowHandle
     [IshkafelPreviewHealthWindow]::ShowWindow($handle, 9) | Out-Null
-    [IshkafelPreviewHealthWindow]::SetForegroundWindow($handle) | Out-Null
-    Start-Sleep -Milliseconds 300
-    if (-not [IshkafelPreviewHealthWindow]::PostMessage(
-        $handle, 0x0100, [UIntPtr]::new(0x20), [IntPtr]::Zero)) {
-        throw 'Failed to send the Space key-down message.'
+    if (-not [IshkafelPreviewHealthWindow]::SetForegroundWindow($handle)) {
+        throw 'Failed to focus the Ishkafel window before sending playback input.'
     }
-    if (-not [IshkafelPreviewHealthWindow]::PostMessage(
-        $handle, 0x0101, [UIntPtr]::new(0x20), [IntPtr]::Zero)) {
-        throw 'Failed to send the Space key-up message.'
+    Start-Sleep -Milliseconds 300
+    if (-not [IshkafelPreviewHealthWindow]::SendSpace()) {
+        throw 'Windows SendInput failed to send the Space key.'
     }
 }
 

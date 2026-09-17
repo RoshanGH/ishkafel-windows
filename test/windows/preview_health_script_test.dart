@@ -6,6 +6,20 @@ import 'package:path/path.dart' as p;
 void main() {
   final windowsOnly = !Platform.isWindows ? '需要 Windows PowerShell' : false;
 
+  test('Windows 真播用系统输入发空格，不向 Flutter 窗口塞消息', () {
+    final script = File(
+      p.join(
+        Directory.current.path,
+        'scripts',
+        'windows',
+        'preview_health.ps1',
+      ),
+    ).readAsStringSync();
+
+    expect(script, contains('SendInput'));
+    expect(script, isNot(contains('PostMessage')));
+  }, skip: windowsOnly);
+
   test('Windows 预览体检脚本会把健康日志交给同一套判据并返回成功', () async {
     final fixture = await _healthLog();
     addTearDown(() => fixture.parent.deleteSync(recursive: true));
