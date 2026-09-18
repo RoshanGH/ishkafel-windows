@@ -57,6 +57,31 @@ void main() {
     expect(jsonDecode(raw)['screenshot'], isNull);
   });
 
+  test('粘贴截图直接进入报告且不产生图片临时文件，拒绝超限数据', () async {
+    final service = ReportService(
+      directory: root,
+      logs: root,
+      version: 'test',
+      probe: () async => {},
+    );
+    final png = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9XkAAAAASUVORK5CYII=',
+    );
+    final file = await service.prepare(screenshotBytes: png);
+    final report = jsonDecode(await file.readAsString());
+    expect(report['screenshot']['type'], 'image/png');
+    expect(base64Decode(report['screenshot']['data']), png);
+    expect(root.listSync(), hasLength(1));
+    await expectLater(
+      service.prepare(screenshotBytes: List.filled(4 * 1024 * 1024 + 1, 0)),
+      throwsA(isA<ReportFailure>()),
+    );
+    await expectLater(
+      service.prepare(screenshotBytes: [1, 2, 3]),
+      throwsA(isA<ReportFailure>()),
+    );
+  });
+
   test('上传失败保留原报告，成功重传后移除且编号不变', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));

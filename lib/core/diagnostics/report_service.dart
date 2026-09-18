@@ -60,6 +60,7 @@ class ReportService {
   Future<File> prepare({
     String description = '',
     File? screenshot,
+    List<int>? screenshotBytes,
     String kind = 'manual',
   }) async {
     if (_preparing) throw const ReportFailure('正在收集，请稍候。');
@@ -72,11 +73,12 @@ class ReportService {
         throw const ReportFailure('待发送报告已满，请先重传已有报告。');
       }
       Map<String, String>? attachment;
-      if (screenshot != null) {
-        if (await screenshot.length() > 4 * 1024 * 1024) {
+      if (screenshot != null || screenshotBytes != null) {
+        if ((screenshotBytes?.length ?? await screenshot!.length()) >
+            4 * 1024 * 1024) {
           throw const ReportFailure('截图请控制在 4 MB 以内。');
         }
-        final bytes = await screenshot.readAsBytes();
+        final bytes = screenshotBytes ?? await screenshot!.readAsBytes();
         final png =
             bytes.length >= 8 &&
             bytes.take(8).join(',') == '137,80,78,71,13,10,26,10';
