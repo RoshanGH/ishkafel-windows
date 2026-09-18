@@ -11,6 +11,7 @@ import '../settings_providers.dart';
 import '../product_owner_card.dart';
 import '../update_card.dart';
 import '../settings_widgets.dart';
+import '../diagnostic_report_button.dart';
 
 /// 在系统文件管理器中打开目录（注入点：测试不真的拉起外部程序）
 typedef DirectoryRevealer = Future<void> Function(Directory dir);
@@ -39,6 +40,7 @@ class AboutSection extends ConsumerWidget {
         const UpdateCard(),
         // 有问题找谁：来这一页的人多半正是遇上事了，把去处摆在最前面
         const ProductOwnerCard(),
+        const DiagnosticReportButton(),
         SettingsCard(
           title: 'ishkafel',
           children: [

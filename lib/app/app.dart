@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../features/agent/agent_stage_overlay.dart';
 import '../features/tasks/task_list_page.dart';
 import 'theme/app_theme.dart';
+import '../features/settings/diagnostic_report_button.dart';
 
 class IshkafelApp extends StatelessWidget {
   const IshkafelApp({super.key});
@@ -9,6 +10,7 @@ class IshkafelApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: 'ishkafel',
+        navigatorKey: diagnosticNavigatorKey,
         theme: buildAppTheme(),
         debugShowCheckedModeBanner: false,
         // Agent 的播报层套在**所有页面外面**：它会跨模块走
@@ -17,7 +19,11 @@ class IshkafelApp extends StatelessWidget {
         // 看的时候。这一层同时也是节奏控制点：每条至少停 0.5 秒才回执，
         // Agent 收到才走下一步
         builder: (context, child) =>
-            AgentStageOverlay(child: child ?? const SizedBox.shrink()),
+            Column(children: [
+              Expanded(child: AgentStageOverlay(child: child ?? const SizedBox.shrink())),
+              const Material(child: Align(alignment: Alignment.centerRight,
+                child: DiagnosticReportButton())),
+            ]),
         home: const TaskListPage(),
       );
 }

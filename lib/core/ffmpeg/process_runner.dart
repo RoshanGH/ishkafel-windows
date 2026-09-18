@@ -4,6 +4,8 @@ import 'dart:io';
 
 import '../presentation/user_facing_exception.dart';
 import 'media_tools_locator.dart';
+import '../log/app_log.dart';
+import '../diagnostics/report_redactor.dart';
 
 /// 子进程执行抽象（生产用 [systemProcessRunner]，测试注入假实现）
 typedef ProcessRunner =
@@ -64,6 +66,10 @@ class TimeoutProcessInvoker {
   });
 
   Future<ProcessResult> call(String executable, List<String> args) async {
+    final watch = Stopwatch()..start();
+    final tool = executable.split(RegExp(r'[\\/]')).last;
+    final clean = ReportRedactor(const []).clean;
+    AppLog.info('工具开始：$tool；参数 ${clean(args.join(' ')).substring(0, clean(args.join(' ')).length.clamp(0, 2000))}');
     // 把装着工具的目录交到子进程手上。本 app 自己调 ffmpeg 早就用绝对路径
     // 绕开了这个坑，但第三方程序绕不开——它自己要去 PATH 上找（见
     // [childProcessPath] 里记的那次真机事故）
@@ -76,13 +82,21 @@ class TimeoutProcessInvoker {
     final stderrFuture = _collect(process.stderr);
     try {
       final exitCode = await process.exitCode.timeout(timeout);
+      final output = await stdoutFuture;
+      final errors = await stderrFuture;
+      AppLog.info('工具结束：$tool；pid=${process.pid}；exit=$exitCode；耗时=${watch.elapsedMilliseconds}ms');
+      if (exitCode != 0) {
+        final detail = clean(errors);
+        AppLog.warn('工具错误：$tool；${detail.substring((detail.length - 8000).clamp(0, detail.length))}');
+      }
       return ProcessResult(
         process.pid,
         exitCode,
-        await stdoutFuture,
-        await stderrFuture,
+        output,
+        errors,
       );
     } on TimeoutException {
+      AppLog.warn('工具超时：$tool；pid=${process.pid}；耗时=${watch.elapsedMilliseconds}ms');
       process.kill(ProcessSignal.sigkill);
       // 已挂起的输出收集不再有人接收，显式忽略避免未处理异常
       stdoutFuture.ignore();

@@ -87,9 +87,9 @@ void main() {
     final appVersion = File('lib/core/app_version.dart').readAsStringSync();
     final pubspec = File('pubspec.yaml').readAsStringSync();
     final changelog = File('CHANGELOG.md').readAsStringSync();
-    expect(appVersion, contains("appVersion = '0.1.242'"));
-    expect(pubspec, contains('version: 0.1.242+242'));
-    expect(changelog, startsWith('## 0.1.242'));
+    expect(appVersion, contains("appVersion = '0.1.243'"));
+    expect(pubspec, contains('version: 0.1.243+243'));
+    expect(changelog, startsWith('## 0.1.243'));
   });
 
   test('MSIX 工具来源固定且下载后先验 SHA-256', () {

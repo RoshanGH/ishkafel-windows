@@ -15,12 +15,20 @@ class MediaKitPlaybackController implements MasterTrack {
   MediaKitPlaybackController({Player? player})
       : player = player ?? Player() {
     _videoController = VideoController(this.player);
+    _diagnosticSubscriptions.add(this.player.stream.error.listen((error) {
+      AppLog.warn('预览播放器错误：$error；position=${this.player.state.position.inMilliseconds}ms；'
+          'playing=${this.player.state.playing}；buffering=${this.player.state.buffering}');
+    }));
+    _diagnosticSubscriptions.add(this.player.stream.videoParams.listen((params) {
+      AppLog.info('预览视频参数：$params');
+    }));
   }
 
   /// media_kit 底层播放器实例。
   final Player player;
 
   late final VideoController _videoController;
+  final List<StreamSubscription<dynamic>> _diagnosticSubscriptions = [];
 
   /// 逐帧步进的锚点。按住方向键连发时不去读播放器位置（seek 是异步的，
   /// 位置还停在上一次的值，反推出旧帧号就会原地踏步）。
@@ -232,7 +240,10 @@ class MediaKitPlaybackController implements MasterTrack {
   /// 先等在跑的命令收尾再销毁。直接 dispose 会在 mpv 工作线程跑命令的当口
   /// 抽掉它的配置，触发一次 `assert` 失败——整个进程 SIGABRT。
   @override
-  Future<void> dispose() => _gate.close(player.dispose);
+  Future<void> dispose() => _gate.close(() async {
+    for (final subscription in _diagnosticSubscriptions) { await subscription.cancel(); }
+    await player.dispose();
+  });
 
   /// 构建视频画面组件：不带内置控制条，由外层（player_panel）自绘控制层。
   Widget buildVideoWidget() {

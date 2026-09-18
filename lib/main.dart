@@ -33,6 +33,9 @@ import 'core/miaoa/miaoa_account_service.dart';
 import 'core/diagnostics/tool_installer.dart';
 import 'core/miaoa/miaoa_auth_service.dart';
 import 'core/diagnostics/environment_report.dart';
+import 'core/diagnostics/report_service.dart';
+import 'core/diagnostics/watchdog.dart';
+import 'features/settings/diagnostic_report_button.dart';
 import 'core/storage/cache_usage.dart';
 import 'core/storage/task_artifacts.dart';
 import 'core/storage/file_task_repository.dart';
@@ -91,6 +94,7 @@ Future<void> main(List<String> args) async {
   final logDir = runtimeDirectories.logDirectory;
   final dataDir = runtimeDirectories.dataDirectory;
   AppLog.startFileLogging(logDir);
+  unawaited(startDiagnosticWatchdog(logDir));
   AppLog.info('应用启动；日志目录：${logDir.path}；数据目录：${dataDir.path}');
   final repository = FileTaskRepository(dataDir);
   final coversDir = Directory(p.join(dataDir.path, 'covers'));
@@ -112,6 +116,19 @@ Future<void> main(List<String> args) async {
     ],
   );
   final analysisPipeline = buildAnalysisPipeline(credentials, dataDir);
+  final reportEndpoint = const String.fromEnvironment('REPORT_API_URL');
+  final reportService = ReportService(
+    directory: Directory(p.join(dataDir.path, 'diagnostics', 'outbox')),
+    logs: logDir,
+    version: appVersion,
+    endpoint: reportEndpoint.isEmpty ? null : Uri.tryParse(reportEndpoint),
+    token: const String.fromEnvironment('REPORT_SUBMIT_TOKEN'),
+    trustedCertificateBase64: const String.fromEnvironment('REPORT_TLS_CA_BASE64'),
+    secrets: [credentials.arkApiKey, credentials.speechAppId,
+      credentials.speechAccessToken,
+      const String.fromEnvironment('UPDATE_TOS_AK'),
+      const String.fromEnvironment('UPDATE_TOS_SK')],
+  );
 
   // 启动期预检 ffmpeg/ffprobe：GUI 进程 PATH 不含 Homebrew 目录，
   // 缺失时列表页常驻横幅引导安装，而不是等用户导入时撞见子进程异常
@@ -151,6 +168,7 @@ Future<void> main(List<String> args) async {
   runApp(
     ProviderScope(
       overrides: [
+        reportServiceProvider.overrideWithValue(reportService),
         initialTaskIdProvider.overrideWithValue(initialTaskId),
         taskRepositoryProvider.overrideWithValue(repository),
         importServiceProvider.overrideWithValue(importService),

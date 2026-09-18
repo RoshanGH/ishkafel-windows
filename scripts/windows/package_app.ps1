@@ -159,6 +159,8 @@ try {
 
     $requiredFiles = @(
         'ishkafel.exe',
+        'ishkafel-diagnostics.exe',
+        'diagnostic_watchdog.ps1',
         'ishkafel_renderer.exe',
         'cli\bin\ishkafel.exe',
         'tools\ffmpeg.exe',

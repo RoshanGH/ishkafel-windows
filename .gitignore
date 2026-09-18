@@ -102,6 +102,8 @@ logs/
 coverage/
 .secrets/
 .secrets
+__pycache__/
+*.pyc
 
 # 参考资料（竞品截图等），只在本机留着，不进库
 参考内容/

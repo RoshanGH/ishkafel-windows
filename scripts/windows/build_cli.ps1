@@ -3,7 +3,7 @@ $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 Push-Location $projectRoot
 try {
-    & dart build cli
+    & dart build cli --target bin/ishkafel.dart
     if ($LASTEXITCODE -ne 0) {
         throw 'Windows CLI build failed.'
     }

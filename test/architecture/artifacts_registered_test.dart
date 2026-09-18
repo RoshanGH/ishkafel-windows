@@ -25,6 +25,8 @@ void main() {
       // analysis_work 有自己的清理路径（它第一层混着任务与非任务的东西，
       // 见 TaskArtifacts 里对 stems 的处理）
       'analysis_work',
+      // 全局待传报告，不归属任务；ReportService 限量 20 份、确认收件即删除。
+      'diagnostics',
     };
 
     final offenders = <String>[];
