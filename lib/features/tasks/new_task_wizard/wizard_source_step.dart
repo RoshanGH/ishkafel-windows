@@ -29,6 +29,7 @@ class WizardSourceStep extends StatelessWidget {
   final WizardLine? line;
 
   final String? filePath;
+  final bool pickingFile;
   final VoidCallback onPickFile;
 
   /// 选了「不用原片」这一路。此时 [filePath] 一定为 null
@@ -44,6 +45,7 @@ class WizardSourceStep extends StatelessWidget {
     this.line,
     this.onPickLine,
     required this.filePath,
+    this.pickingFile = false,
     required this.onPickFile,
     this.blank = false,
     required this.onPickBlank,
@@ -116,11 +118,13 @@ class WizardSourceStep extends StatelessWidget {
       cardKey: const Key('wizard-pick-local-file'),
       icon: Icons.folder_open,
       title: '本地文件',
-      description: picked == null
-          ? '点击选择 mp4 / mov 成片'
-          : '${p.basename(picked)}\n点击可重新选择',
+      description: pickingFile
+          ? '正在选择文件，请在系统窗口中选择或取消'
+          : picked == null
+              ? '点击选择 mp4 / mov 成片'
+              : '${p.basename(picked)}\n点击可重新选择',
       selected: picked != null,
-      onTap: onPickFile,
+      onTap: pickingFile ? null : onPickFile,
     );
   }
 

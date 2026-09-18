@@ -54,6 +54,10 @@ class MultitrackPlayback implements PlaybackController {
   /// 画面轨当前加载的那条 EDL。没变就不重新 open——open 会闪一下黑
   String? _videoEdl;
   bool _disposed = false;
+  StreamSubscription<String>? _errorSub;
+  final _errors = StreamController<String>.broadcast(sync: true);
+  int _failureRevision = 0;
+  Stream<String> get errors => _errors.stream;
 
   /// 纠偏 seek 实测要多久。见 [_correctDrift]：没有它，每纠一次就制造下一次
   int _seekCostMs = 0;
@@ -71,6 +75,15 @@ class MultitrackPlayback implements PlaybackController {
   }) {
     _positionSub = video.positionMsStream.listen(_onMasterPosition);
     _playingSub = video.playingStream.listen(_onMasterPlaying);
+    final errorSource = video;
+    if (errorSource is PlaybackErrorSource) {
+      _errorSub = (errorSource as PlaybackErrorSource).playbackErrors.listen((error) {
+        if (_disposed) return;
+        _failureRevision++;
+        _videoEdl = null;
+        _errors.add(error);
+      });
+    }
   }
 
   TrackPlan get plan => _plan;
@@ -111,7 +124,7 @@ class MultitrackPlayback implements PlaybackController {
   /// mpv loadfile，画面连闪好几下、每次都得重新解码定位
   /// （2026-09-09 真机日志：一次进入 6 次「画面轨换源」）。
   /// 中间那几版在被播出来之前就已经过时了，直接丢掉。
-  TrackPlan? _queued;
+  int _requestRevision = 0;
 
   /// 换一套轨。
   ///
@@ -124,13 +137,12 @@ class MultitrackPlayback implements PlaybackController {
   /// [NormalizedTrackPlan]，新来源想绕过去**编译不过**
   Future<void> setPlan(NormalizedTrackPlan normalized) {
     final plan = normalized.plan;
-    _queued = plan;
+    final revision = ++_requestRevision;
     final next = _pending.then((_) async {
-      final pending = _queued;
       // 排队期间又来了新的，前面那几版已经被它顶掉
-      if (pending == null) return;
-      _queued = null;
-      await _setPlan(pending);
+      // 每个请求只执行自己的方案，失败必须回到该请求而不是过期的调用者。
+      if (_disposed || revision != _requestRevision) return;
+      await _setPlan(plan);
     });
     // 前一次失败不该把后面全堵死
     _pending = next.catchError((_) {});
@@ -153,13 +165,15 @@ class MultitrackPlayback implements PlaybackController {
     // 播放器里还挂着上一次打开的东西，用户看到的是**别的任务的画面**。
     // 真机上撞到过：新建的空白任务里播着上一条滴露成片的一帧。
     if (videoEdl == null && _videoEdl != null) {
-      _videoEdl = null;
       AppLog.info('画面轨清空（没有可播的段落）');
       await video.clearSource();
+      _videoEdl = null;
     }
     final videoChanged = videoEdl != null && videoEdl != _videoEdl;
     if (videoChanged) {
-      _videoEdl = videoEdl;
+      final failureRevision = _failureRevision;
+      // 失败后不能命中旧缓存，即使用户下一次切回原来的 EDL。
+      _videoEdl = null;
       // 换了什么必须留痕：这套「谁在什么时候播哪个文件的哪一段」是产品的核心，
       // 出问题时没有它就只能靠猜
       AppLog.info('画面轨换源，共 ${plan.video.length} 段：$videoEdl');
@@ -168,6 +182,10 @@ class MultitrackPlayback implements PlaybackController {
       // 有的不带，播到接缝处播放器要重建音频链路，主时钟会卡住好几秒
       // （真机 16 处这样的接缝，第一处就在第 2 句里）
       await video.disableAudio();
+      if (failureRevision != _failureRevision) {
+        throw StateError('视频加载期间播放器报告错误');
+      }
+      _videoEdl = videoEdl;
     }
     // 素材原声挂在独立的一条轨上，跟着画面段走（见 [_applySource]）
     await _applySource(video.positionMs, force: true);
@@ -475,6 +493,8 @@ class MultitrackPlayback implements PlaybackController {
     _syncTimer?.cancel();
     await _positionSub?.cancel();
     await _playingSub?.cancel();
+    await _errorSub?.cancel();
+    await _errors.close();
     await voice.dispose();
     await bgm.dispose();
     await source?.dispose();

@@ -86,6 +86,11 @@ abstract class PlaybackController {
 /// 抽成接口不只是为了整齐：换方案时「画面没变就一帧不动、正在播就接着播、
 /// 按逻辑位置恢复」这三条规矩全在 [MultitrackPlayback.setPlan] 里，
 /// 不能注入替身就只能靠反复戳界面去验，那不是验证。
+/// 原生播放器可能在打开命令返回之后才报告解码/读取错误。
+abstract class PlaybackErrorSource {
+  Stream<String> get playbackErrors;
+}
+
 abstract class MasterTrack implements PlaybackController {
   Future<void> setMuted(bool muted);
 

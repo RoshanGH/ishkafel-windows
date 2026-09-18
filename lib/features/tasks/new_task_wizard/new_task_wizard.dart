@@ -13,6 +13,7 @@ import '../../../core/miaoa/miaoa_failure.dart';
 import '../../../core/miaoa/miaoa_tag_service.dart';
 import '../../../core/models/project_ref.dart';
 import '../../../core/models/tag_group_ref.dart';
+import '../../../core/platform/windows_video_picker.dart';
 import 'tag_group_field.dart';
 import 'wizard_body.dart';
 import 'wizard_source_step.dart';
@@ -75,6 +76,9 @@ class NewTaskWizard extends ConsumerStatefulWidget {
 
 class _NewTaskWizardState extends ConsumerState<NewTaskWizard> {
   String? _filePath;
+  bool _pickingFile = false;
+  bool _filePickCancelled = false;
+  VoidCallback? _cancelFileSelection;
 
   /// 走「不用原片，从素材拼」这一路
   bool _blank = false;
@@ -151,18 +155,46 @@ class _NewTaskWizardState extends ConsumerState<NewTaskWizard> {
   }
 
   Future<void> _pickFile() async {
+    if (_pickingFile) return;
+    _cancelFileSelection = ref.read(videoFilePickerCancelProvider);
+    _filePickCancelled = false;
+    setState(() => _pickingFile = true);
+    final elapsed = Stopwatch()..start();
+    AppLog.info('video_picker phase=start');
     try {
+      // 先呈现等待状态，再启动 Windows 独立选择进程或其他平台的系统窗口。
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || _filePickCancelled) return;
+      AppLog.info('video_picker phase=invoke elapsedMs=${elapsed.elapsedMilliseconds}');
       final path = await ref.read(videoFilePickerProvider)();
-      if (path == null || !mounted) return;
+      AppLog.info('video_picker phase=${path == null ? 'cancel' : 'success'} '
+          'elapsedMs=${elapsed.elapsedMilliseconds}');
+      if (path == null || !mounted || _filePickCancelled) return;
       setState(() {
         _filePath = path;
         _blank = false; // 选了本地文件就不再是空白任务
         _script = false;
       });
     } catch (e) {
-      AppLog.warn('选择成片文件失败：$e');
-      if (mounted) _showSnackBar('打开文件选择框失败，请重试。');
+      AppLog.warn('video_picker phase=error elapsedMs=${elapsed.elapsedMilliseconds} '
+          'type=${e.runtimeType}');
+      if (mounted && !_filePickCancelled) {
+        _showSnackBar(e is VideoPickerException ? e.message : '打开文件选择框失败，请重试。');
+      }
+    } finally {
+      if (mounted) setState(() => _pickingFile = false);
     }
+  }
+
+  void _cancelPickFile() {
+    _filePickCancelled = true;
+    _cancelFileSelection?.call();
+  }
+
+  @override
+  void dispose() {
+    if (_pickingFile) _cancelPickFile();
+    super.dispose();
   }
 
   void _showSnackBar(String message) =>
@@ -221,6 +253,7 @@ class _NewTaskWizardState extends ConsumerState<NewTaskWizard> {
   /// （镜头层打标发生在参考分镜出现之后，届时用建任务时选的组）——
   /// 但为了检索质量，脚本成片允许选镜头组，仅分子组必填
   List<String> get _missing => [
+        if (_pickingFile) '请先完成文件选择',
         // 顺序就是人该动手的顺序：先定线，再定起点，最后标签组
         if (_line == null) '先选一条线：替换裂变还是脚本成片',
         if (_line == WizardLine.replace && !_blank && _filePath == null)
@@ -297,6 +330,8 @@ class _NewTaskWizardState extends ConsumerState<NewTaskWizard> {
                   child: SingleChildScrollView(
                   child: WizardBody(
                     filePath: _filePath,
+                    pickingFile: _pickingFile,
+                    onCancelFile: _cancelFileSelection == null ? null : _cancelPickFile,
                     line: _line,
                     onPickLine: _pickLine,
                     onPickFile: _pickFile,

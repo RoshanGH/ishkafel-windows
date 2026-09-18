@@ -19,6 +19,7 @@ import '../../core/audio/source_audio.dart';
 import '../../core/playback/gap_clip.dart';
 import '../../core/playback/silent_clip.dart';
 import '../../core/ffmpeg/media_spec.dart';
+import '../../core/log/app_log.dart';
 import '../picking/picked_media_cache.dart';
 import 'speed_fitter.dart';
 
@@ -57,6 +58,11 @@ class PreviewTracks extends ChangeNotifier {
   TrackPlan _plan = TrackPlan.empty;
   String? _lastKey;
   bool _disposed = false;
+  int _revision = 0;
+  bool _preparing = false;
+  String? _loadError;
+  StreamSubscription<String>? _playbackErrors;
+  int _playbackFailureRevision = 0;
 
   /// 这一轮有哪几段没能统一到预览规格。**不静默**：它们在接缝处会闪
   List<String> _offSpec = const [];
@@ -78,6 +84,14 @@ class PreviewTracks extends ChangeNotifier {
     required this.normalizer,
   }) {
     speedFitter?.addListener(_onFitterChanged);
+    _playbackErrors = playback.errors.listen((error) {
+      if (_disposed) return;
+      _playbackFailureRevision++;
+      _lastKey = null;
+      _loadError = '预览播放失败，请点击重试；若仍失败，请提交诊断报告';
+      AppLog.warn('预览播放器异步失败：$error');
+      _notify();
+    });
   }
 
   TrackPlan get plan => _plan;
@@ -85,6 +99,8 @@ class PreviewTracks extends ChangeNotifier {
   /// 这一刻要不要告诉用户「还在准备」。为 null 表示一切就绪，不该有横幅——
   /// 多轨播放本来就不需要等合成，只有变速切片会花几秒
   String? get notice {
+    if (_loadError != null) return _loadError;
+    if (_preparing) return '正在准备预览画面，请稍候';
     final pending = speedFitter?.pending ?? 0;
     if (pending > 0) {
       return '正在准备 $pending 段替换镜头的变速画面，其余部分已经能播';
@@ -114,8 +130,7 @@ class PreviewTracks extends ChangeNotifier {
     // 没有画面，人一按播放就会在那儿停住——先把话说在前面，并点名是哪几段
     if (_plan.unplayable.isNotEmpty) {
       // 连号的并成区间：四个还能一个个念，十个就是一串噪音
-      final names =
-          unitRanges([for (final s in _plan.unplayable) s.unitIndex]);
+      final names = unitRanges([for (final s in _plan.unplayable) s.unitIndex]);
       return '$names 还没选素材，这几段放不了——去「替换素材」给它们挑，'
           '或者把它们删掉';
     }
@@ -129,6 +144,8 @@ class PreviewTracks extends ChangeNotifier {
   /// 那件事重试一百次也不会变，人点了只会以为按钮坏了。
   /// 能重试的只有「取不到配乐」这类外部抖动。
   bool get noticeRetryable {
+    if (_preparing) return false;
+    if (_loadError != null || _offSpec.isNotEmpty) return true;
     if ((speedFitter?.pending ?? 0) > 0) return false;
     return _plan.bgmMissing.isNotEmpty || _plan.sourceStemMissing.isNotEmpty;
   }
@@ -153,54 +170,108 @@ class PreviewTracks extends ChangeNotifier {
     required Map<String, String> voiceAudio,
     List<UnitReplacement> replacements = const [],
   }) async {
-    // 变速切片要按新方案补齐；补好了会回调，那时再重建一次
-    unawaited(speedFitter?.sync(
-      units: units,
-      replacements: replacements,
-      materialPathOf: (id) => materials?.localPathOf(id),
-    ));
-
-    // 铺了配乐的整体替换段，后台把素材分离成纯人声；出结果了再重推一次。
-    // **不等它**——分离要十几秒，预览为此卡住是不可接受的
-    unawaited(_ensureMaterialVocals(
-        task: task, units: units, replacements: replacements));
-
-    var plan = _build(
-      task: task,
-      units: units,
-      voiceAudio: voiceAudio,
-      replacements: replacements,
-    );
-    // 还没挑素材的那几段要垫上黑场，否则 EDL 把洞压掉、后面全部提前。
-    // 已经垫好的这一轮就用上；没垫好的后台去渲，渲完再推一次
-    if (await _ensureGaps(plan, units)) {
-      plan = _build(
-        task: task,
-        units: units,
-        voiceAudio: voiceAudio,
-        replacements: replacements,
-      );
-    }
-    // 选了「不放原片声音」的那几镜同理：EDL 表达不了音量为 0，也不能留洞
-    if (await _ensureSilences(
-        task: task, units: units, replacements: replacements)) {
-      plan = _build(
-        task: task,
-        units: units,
-        voiceAudio: voiceAudio,
-        replacements: replacements,
-      );
-    }
-    final key = _keyOf(plan);
-    if (key == _lastKey) return;
-    _lastKey = key;
-    _plan = plan;
-    // **过闸**：画面轨每一段验一遍规格，不合规的换成代理。正常情况下
-    // 一次转码都不会发生（素材下载时已经转过），这里只是查缓存
-    final normalized = await normalizer.normalize(plan);
-    _offSpec = normalized.offSpec;
-    await playback.setPlan(normalized);
+    if (_disposed) return;
+    final revision = ++_revision;
+    _preparing = true;
+    _loadError = null;
     _notify();
+    final elapsed = Stopwatch()..start();
+    try {
+      // 变速切片要按新方案补齐；补好了会回调，那时再重建一次
+      unawaited(
+        speedFitter?.sync(
+          units: units,
+          replacements: replacements,
+          materialPathOf: (id) => materials?.localPathOf(id),
+        ),
+      );
+
+      // 铺了配乐的整体替换段，后台把素材分离成纯人声；出结果了再重推一次。
+      // **不等它**——分离要十几秒，预览为此卡住是不可接受的
+      unawaited(
+        _ensureMaterialVocals(
+          task: task,
+          units: units,
+          replacements: replacements,
+        ),
+      );
+
+      var plan = _build(
+        task: task,
+        units: units,
+        voiceAudio: voiceAudio,
+        replacements: replacements,
+      );
+      // 还没挑素材的那几段要垫上黑场，否则 EDL 把洞压掉、后面全部提前。
+      // 已经垫好的这一轮就用上；没垫好的后台去渲，渲完再推一次
+      if (await _ensureGaps(plan, units)) {
+        plan = _build(
+          task: task,
+          units: units,
+          voiceAudio: voiceAudio,
+          replacements: replacements,
+        );
+      }
+      // 选了「不放原片声音」的那几镜同理：EDL 表达不了音量为 0，也不能留洞
+      if (await _ensureSilences(
+        task: task,
+        units: units,
+        replacements: replacements,
+      )) {
+        plan = _build(
+          task: task,
+          units: units,
+          voiceAudio: voiceAudio,
+          replacements: replacements,
+        );
+      }
+      if (_disposed || revision != _revision) return;
+      final key = _keyOf(plan);
+      if (key == _lastKey) {
+        _plan = plan;
+        return;
+      }
+      // **过闸**：画面轨每一段验一遍规格，不合规的换成代理。正常情况下
+      // 一次转码都不会发生（素材下载时已经转过），这里只是查缓存
+      final normalized = await normalizer.normalize(plan);
+      if (_disposed || revision != _revision) return;
+      // 开始切换就不再声称旧计划已生效；失败或被新请求替代后仍能重试。
+      _lastKey = null;
+      AppLog.info(
+        '预览计划应用：task=${task.id} revision=$revision segments=${plan.video.length}',
+      );
+      final failureRevision = _playbackFailureRevision;
+      await playback.setPlan(normalized);
+      if (_disposed || revision != _revision) return;
+      if (failureRevision != _playbackFailureRevision) return;
+      _plan = plan;
+      _loadError = null;
+      _offSpec = normalized.offSpec;
+      _lastKey = key;
+      AppLog.info(
+        '预览计划就绪：task=${task.id} revision=$revision elapsedMs=${elapsed.elapsedMilliseconds}',
+      );
+    } catch (error, stack) {
+      if (_disposed || revision != _revision) return;
+      _lastKey = null;
+      _loadError = '预览加载失败，请点击重试；若仍失败，请提交诊断报告';
+      AppLog.warn(
+        '预览计划失败：task=${task.id} revision=$revision elapsedMs=${elapsed.elapsedMilliseconds} error=$error\n$stack',
+      );
+    } finally {
+      if (!_disposed && revision == _revision) {
+        _preparing = false;
+        _notify();
+      }
+    }
+  }
+
+  /// 用户明确重试时清除当前素材探测结果，不必通过换素材制造一次更新。
+  void invalidate() {
+    _lastKey = null;
+    for (final segment in _plan.video) {
+      normalizer.forget(segment.source);
+    }
   }
 
   /// 给选了「不放原片声音」的那几镜补静音。**同步能拿到的当轮就用**
@@ -219,7 +290,8 @@ class PreviewTracks extends ChangeNotifier {
           : UnitReplacement.keepOriginal();
       for (var sh = 0; sh < units[u].shots.length; sh++) {
         final picked = resolveSourceAudio(
-          replaced: replacement.mode == ReplacementMode.perShot &&
+          replaced:
+              replacement.mode == ReplacementMode.perShot &&
               (replacement.shotCandidateIds[sh]?.isNotEmpty ?? false),
           taskDefault: task.sourceAudio,
           shotMode: units[u].shots[sh].sourceAudioMode,
@@ -235,12 +307,14 @@ class PreviewTracks extends ChangeNotifier {
           changed = true;
           continue;
         }
-        unawaited(filler.render(durationMs: ms).then((path) {
-          if (path == null) return;
-          _silences[key] = path;
-          _lastKey = null; // 强制下一轮重推
-          _notify();
-        }));
+        unawaited(
+          filler.render(durationMs: ms).then((path) {
+            if (path == null) return;
+            _silences[key] = path;
+            _lastKey = null; // 强制下一轮重推
+            _notify();
+          }),
+        );
       }
     }
     return changed;
@@ -262,12 +336,14 @@ class PreviewTracks extends ChangeNotifier {
         changed = true;
         continue;
       }
-      unawaited(filler.render(durationMs: ms, spec: spec).then((path) {
-        if (path == null) return;
-        _gaps[span.unitIndex] = path;
-        _lastKey = null; // 强制下一轮重推
-        _notify();
-      }));
+      unawaited(
+        filler.render(durationMs: ms, spec: spec).then((path) {
+          if (path == null) return;
+          _gaps[span.unitIndex] = path;
+          _lastKey = null; // 强制下一轮重推
+          _notify();
+        }),
+      );
     }
     return changed;
   }
@@ -303,7 +379,8 @@ class PreviewTracks extends ChangeNotifier {
       final replacement = replacements[i];
       if (replacement.mode != ReplacementMode.whole) continue;
       if (!task.bgm.segments.any((s) => s.covers(i))) continue;
-      final id = replacement.wholePreviewId ??
+      final id =
+          replacement.wholePreviewId ??
           (replacement.wholeCandidateIds.isEmpty
               ? null
               : replacement.wholeCandidateIds.first);
@@ -369,15 +446,17 @@ class PreviewTracks extends ChangeNotifier {
   /// 轨道方案的指纹。相同就不换源——换源会让播放器重新打开文件，
   /// 有一次可见的闪
   static String _keyOf(TrackPlan plan) => [
-        for (final s in plan.video) '${s.atMs}:${s.durationMs}:${s.source}:${s.inMs}',
-        '|',
-        // 口播轨这一段读哪个文件会随「原片这一镜的声音」变——档位改了
-        // 指纹必须跟着变，否则换了设置却不换源，人听到的还是上一版
-        for (final s in plan.voice) '${s.atMs}:${s.durationMs}:${s.source}:${s.inMs}',
-        '|',
-        for (final s in plan.bgm)
-          '${s.clip.atMs}:${s.clip.durationMs}:${s.clip.source}:${s.volume}',
-      ].join(',');
+    for (final s in plan.video)
+      '${s.atMs}:${s.durationMs}:${s.source}:${s.inMs}',
+    '|',
+    // 口播轨这一段读哪个文件会随「原片这一镜的声音」变——档位改了
+    // 指纹必须跟着变，否则换了设置却不换源，人听到的还是上一版
+    for (final s in plan.voice)
+      '${s.atMs}:${s.durationMs}:${s.source}:${s.inMs}',
+    '|',
+    for (final s in plan.bgm)
+      '${s.clip.atMs}:${s.clip.durationMs}:${s.clip.source}:${s.volume}',
+  ].join(',');
 
   void _onFitterChanged() {
     _notify();
@@ -396,6 +475,7 @@ class PreviewTracks extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    unawaited(_playbackErrors?.cancel());
     speedFitter?.removeListener(_onFitterChanged);
     super.dispose();
   }
@@ -409,10 +489,10 @@ class PreviewTracks extends ChangeNotifier {
 /// 而 core/audio 是 CLI 也要用的——`dart build cli` 会在 FFI 那层直接崩
 /// 带 taskId 是因为派生产物也按项目存：分离结果落在 `vocals/<taskId>/`，
 /// 删任务时一起走
-final materialSeparatorProvider = Provider<
-    Future<String?> Function(String taskId, String materialPath)?>(
-  (ref) => null,
-);
+final materialSeparatorProvider =
+    Provider<Future<String?> Function(String taskId, String materialPath)?>(
+      (ref) => null,
+    );
 
 /// 一条提示要说清两件事：**为什么**声音不对，以及**做什么**才能好。
 /// [retryable] 为真时界面给一个「重新分离」的按钮
@@ -433,14 +513,19 @@ typedef VocalsNotice = ({String text, bool retryable});
 /// 来自替换素材**，而素材是逐条分离的（见 [MaterialVocalCache]）。所以这条
 /// 提示对它不成立——除非机器上压根没装分离工具，[canSeparate] 就是为此。
 VocalsNotice? missingVocalsNotice(
-    BgmPlan bgm, VoicePlan voices, String? vocalsPath,
-    {bool isBlank = false, bool canSeparate = true}) {
+  BgmPlan bgm,
+  VoicePlan voices,
+  String? vocalsPath, {
+  bool isBlank = false,
+  bool canSeparate = true,
+}) {
   if (bgm.segments.isEmpty) return null;
   if (isBlank) {
     // 空白任务的每一段都是整体替换，声音来自素材，逐条分离即可
     if (canSeparate) return null;
     return (
-      text: '这台机器上没有装人声分离工具，配乐会和素材自带的声音叠在一起。'
+      text:
+          '这台机器上没有装人声分离工具，配乐会和素材自带的声音叠在一起。'
           '去「设置 → 运行环境」装一下就好',
       retryable: false,
     );
@@ -449,7 +534,8 @@ VocalsNotice? missingVocalsNotice(
   // 工具真没装：指路去装。重试没有意义，装完才有得谈
   if (!canSeparate) {
     return (
-      text: '这台机器上没有装人声分离工具，新配乐会与原片自带的背景音叠在一起。'
+      text:
+          '这台机器上没有装人声分离工具，新配乐会与原片自带的背景音叠在一起。'
           '去「设置 → 运行环境」装一下就好',
       retryable: false,
     );
@@ -457,7 +543,8 @@ VocalsNotice? missingVocalsNotice(
   // 工具是好的，缺的只是这条片子自己的那份人声轨——分一次就有了。
   // 不许再提「装工具」：人家已经装好了，再劝一遍只会让他以为是自己没装对
   return (
-    text: '这条片子的纯人声轨还没有，新配乐会与原片自带的背景音叠在一起。'
+    text:
+        '这条片子的纯人声轨还没有，新配乐会与原片自带的背景音叠在一起。'
         '重新分离一次就好',
     retryable: true,
   );

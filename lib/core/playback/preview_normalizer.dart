@@ -71,11 +71,11 @@ class PreviewNormalizer {
   /// （[ProxyBuilder.build] 正是这个约定）
   final Future<String> Function(String path) toProxy;
 
-  /// 规格探测的结果。同一个路径在一次会话里只探一次——
-  /// 逐段 ffprobe 会让每次换轨都多花几百毫秒，而文件是不会自己变的
-  final Map<String, MediaSpec?> _specs = {};
+  /// 成功读到的规格。临时读不到不能缓存，否则文件就绪后也无法恢复。
+  /// 逐段 ffprobe 会拖慢换轨；文件重新生成时由 forget 清掉旧规格。
+  final Map<String, MediaSpec> _specs = {};
 
-  /// 已经归一过的路径：原路径 → 该播的那一份。同上，只算一次
+  /// 已确认合规的路径：原路径 → 该播的那一份。失败降级不能混入。
   final Map<String, String> _resolved = {};
 
   /// 原样放行：一段都不验、一段都不换。
@@ -86,12 +86,12 @@ class PreviewNormalizer {
   final bool passthrough;
 
   PreviewNormalizer({required this.probe, required this.toProxy})
-      : passthrough = false;
+    : passthrough = false;
 
   PreviewNormalizer.passthrough()
-      : probe = _neverProbe,
-        toProxy = _neverProxy,
-        passthrough = true;
+    : probe = _neverProbe,
+      toProxy = _neverProxy,
+      passthrough = true;
 
   static Future<MediaSpec?> _neverProbe(String _) async => null;
   static Future<String> _neverProxy(String path) async => path;
@@ -99,7 +99,9 @@ class PreviewNormalizer {
   /// 清掉探测缓存。文件可能被重新生成（重导代理、重渲切片）时调用
   void forget(String path) {
     _specs.remove(path);
-    _resolved.remove(path);
+    _resolved.removeWhere(
+      (source, resolved) => source == path || resolved == path,
+    );
   }
 
   Future<NormalizedTrackPlan> normalize(TrackPlan plan) async {
@@ -110,27 +112,43 @@ class PreviewNormalizer {
       return NormalizedTrackPlan._(plan, const []);
     }
     final offSpec = <String>[];
+    // 同轮重复片段共享失败结果，避免对同一个失败源反复转码；下轮允许重试。
+    final failed = <String>{};
     final video = <TrackSegment>[];
     for (final segment in plan.video) {
-      final resolved = await _resolve(segment.source, offSpec);
-      video.add(resolved == segment.source
-          ? segment
-          : segment.withSource(resolved));
+      final resolved = failed.contains(segment.source)
+          ? segment.source
+          : await _resolve(segment.source, failed);
+      if (failed.contains(segment.source)) {
+        offSpec.add(_shortName(segment.source));
+      }
+      video.add(
+        resolved == segment.source ? segment : segment.withSource(resolved),
+      );
     }
     if (offSpec.isNotEmpty) {
       // **说出来**：这几段在接缝处会闪。不报的话，下一个人又要从头查一遍
-      AppLog.warn('画面轨有 ${offSpec.length} 段没能统一到预览规格，'
-          '接缝处会闪一下：${offSpec.join('、')}');
+      AppLog.warn(
+        '画面轨有 ${offSpec.length} 段没能统一到预览规格，'
+        '接缝处会闪一下：${offSpec.join('、')}',
+      );
     }
     return NormalizedTrackPlan._(
-        plan.withVideo(video), List.unmodifiable(offSpec));
+      plan.withVideo(video),
+      List.unmodifiable(offSpec),
+    );
   }
 
-  Future<String> _resolve(String path, List<String> offSpec) async {
+  Future<MediaSpec?> _probe(String path) async {
+    if (_specs[path] case final spec?) return spec;
+    final spec = await probe(path);
+    if (spec != null) _specs[path] = spec;
+    return spec;
+  }
+
+  Future<String> _resolve(String path, Set<String> failed) async {
     if (_resolved[path] case final done?) return done;
-    final spec = _specs.containsKey(path)
-        ? _specs[path]
-        : (_specs[path] = await probe(path));
+    final spec = await _probe(path);
     if (ProxySpec.matches(spec)) {
       return _resolved[path] = path; // 已经合规，一个字节都不用动
     }
@@ -138,15 +156,17 @@ class PreviewNormalizer {
     // 素材下载时已经转过，内容指纹一样就直接命中
     final proxy = await toProxy(path);
     if (proxy != path) {
-      final proxySpec = _specs[proxy] ??= await probe(proxy);
+      final proxySpec = await _probe(proxy);
       if (ProxySpec.matches(proxySpec)) {
         return _resolved[path] = proxy;
       }
+      // 转码器可能在同一路径重建代理，失败规格不能挡住下轮重新校验。
+      _specs.remove(proxy);
     }
     // 转不动（或转出来还是不合规）：如实记下来，仍然播原文件——
     // 宁可留着那一下接缝顿挫，也不能让这一段整个放不了
-    offSpec.add(_shortName(path));
-    return _resolved[path] = path;
+    failed.add(path);
+    return path;
   }
 
   /// 报给人看的时候只留文件名：完整路径又长又不说明问题

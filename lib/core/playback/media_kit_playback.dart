@@ -7,11 +7,12 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../log/app_log.dart';
 import '../editing/frame_time.dart';
 import 'frame_stepper.dart';
+import 'media_load_gate.dart';
 import 'playback_controller.dart';
 import 'playback_gate.dart';
 
 /// media_kit 实现（薄封装 [Player]）；`Video` 组件由 player_panel 使用。
-class MediaKitPlaybackController implements MasterTrack {
+class MediaKitPlaybackController implements MasterTrack, PlaybackErrorSource {
   MediaKitPlaybackController({Player? player})
       : player = player ?? Player() {
     _videoController = VideoController(this.player);
@@ -46,15 +47,19 @@ class MediaKitPlaybackController implements MasterTrack {
 
   @override
   Future<void> open(String path) => _gate.run(() async {
-        await player.open(Media(path), play: false);
+        await openMediaAndWaitForDuration(
+          durations: player.stream.duration,
+          errors: player.stream.error,
+          open: () => player.open(Media(path), play: false),
+        );
         // 播到文件结尾（或区间终点）时停在最后一帧，而不是卸载文件后黑屏。
         // 只设一次，之后区间播放只管改 `end`。
         await _setMpv('keep-open', 'yes');
       });
 
-  /// 等文件真正加载完（时长已知）再返回。[open] 返回时 mpv 可能还在
-  /// loadfile，这个当口发出的 seek 会被加载过程吞掉——参考弹窗
-  /// 「每个分镜都从头播」就是这么来的。超时不抛：播放继续尝试，
+  /// 兼容直接操作 player 的调用方；[open] 本身已等待加载确认。
+  /// 加载中发出的 seek 会被吞掉——参考弹窗「每个分镜都从头播」就是
+  /// 这么来的。此兼容入口仍然超时不抛：播放继续尝试，
   /// 大不了退回从头播，不能让弹窗卡死
   @override
   Future<void> waitUntilLoaded(
@@ -210,6 +215,9 @@ class MediaKitPlaybackController implements MasterTrack {
 
   @override
   Stream<bool> get playingStream => player.stream.playing;
+
+  @override
+  Stream<String> get playbackErrors => player.stream.error;
 
   @override
   int get positionMs => player.state.position.inMilliseconds;

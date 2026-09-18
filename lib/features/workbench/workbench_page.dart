@@ -622,7 +622,10 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
     });
     // 空白任务没有原片可开。画面全部来自素材，等轨道推上去自然就有内容了
     if (task.sourcePath case final source?) {
-      unawaited(_openSource(playback, source));
+      // 多轨由规格化计划唯一负责换源，不能与裸原片加载竞争同一个播放器。
+      if (playback is! MultitrackPlayback) {
+        unawaited(_openSource(playback, source));
+      }
     }
     unawaited(_loadMedia());
     _restoreVoiceAudio();
@@ -1787,6 +1790,7 @@ class _WorkbenchPageState extends ConsumerState<WorkbenchPage> {
   /// 重新推一次轨道。配乐/素材取不到最常见的两个原因是网络抖动和登录过期，
   /// 重试一次多半就好了——而此前用户只能去重新选一遍
   void _retryPreviewAudio() {
+    _tracks?.invalidate();
     for (final cache in [_mediaCache, _bgmMediaCache]) {
       for (final id in cache?.notReady ?? const <int>[]) {
         cache!.retry(id);

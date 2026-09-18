@@ -1,9 +1,14 @@
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../../../core/miaoa/miaoa_tag_service.dart';
 import '../../../core/models/project_ref.dart';
 import '../../../core/models/tag_group_ref.dart';
+import '../../../core/platform/windows_video_picker.dart';
+import '../../settings/settings_providers.dart';
 
 /// 新建任务向导的产物：成片来源 + 两层打标各自的标签组。
 ///
@@ -44,15 +49,36 @@ class NewTaskWizardResult {
 typedef VideoFilePicker = Future<String?> Function();
 
 /// 真实实现：系统文件选择框，只接受 mp4 / mov
-Future<String?> pickLocalVideoFile() async {
+Future<String?> pickLocalVideoFile({WindowsVideoPicker? windowsPicker}) async {
+  if (Platform.isWindows) {
+    if (windowsPicker == null) {
+      throw const VideoPickerException('应用数据目录尚未就绪，请稍后重试。');
+    }
+    return windowsPicker.pick();
+  }
   const typeGroup = XTypeGroup(label: '视频', extensions: ['mp4', 'mov']);
   final file = await openFile(acceptedTypeGroups: const [typeGroup]);
   return file?.path;
 }
 
 /// widget 测试用假实现覆盖，避免弹出真实系统文件框
-final videoFilePickerProvider =
-    Provider<VideoFilePicker>((ref) => pickLocalVideoFile);
+final windowsVideoPickerProvider = Provider<WindowsVideoPicker?>((ref) {
+  if (!Platform.isWindows) return null;
+  final data = ref.watch(dataDirProvider);
+  if (data == null) return null;
+  final picker = WindowsVideoPicker(
+    tempRoot: Directory(p.join(data.path, 'tmp', 'video-picker')),
+  );
+  ref.onDispose(picker.cancel);
+  return picker;
+});
+
+final videoFilePickerProvider = Provider<VideoFilePicker>((ref) =>
+    () => pickLocalVideoFile(windowsPicker: ref.read(windowsVideoPickerProvider)));
+
+/// 其他平台继续使用系统模态选择框；Windows 提供可由主窗口终止的独立进程。
+final videoFilePickerCancelProvider = Provider<void Function()?>((ref) =>
+    ref.watch(windowsVideoPickerProvider)?.cancel);
 
 /// miaoa 标签体系读取入口。
 ///

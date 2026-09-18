@@ -50,10 +50,13 @@ NewTaskWizardResult? lastResult;
 Widget wrap({
   ProcessRunner? run,
   VideoFilePicker? picker,
+  VoidCallback? cancelPicker,
 }) {
   lastResult = null;
   return ProviderScope(
     overrides: [
+      if (cancelPicker != null)
+        videoFilePickerCancelProvider.overrideWithValue(cancelPicker),
       miaoaTagServiceProvider.overrideWithValue(
           MiaoaTagService(gateway: MiaoaGateway(run: run ?? fakeCli(), binary: 'miaoa'))),
       videoFilePickerProvider

@@ -14,6 +14,8 @@ import 'wizard_source_step.dart';
 /// 向导正文（两步），纯展示：状态与回调由 [NewTaskWizard] 持有
 class WizardBody extends StatelessWidget {
   final String? filePath;
+  final bool pickingFile;
+  final VoidCallback? onCancelFile;
 
   /// 选了哪条线（替换裂变 / 脚本成片）
   final WizardLine? line;
@@ -54,6 +56,8 @@ class WizardBody extends StatelessWidget {
   const WizardBody({
     super.key,
     required this.filePath,
+    this.pickingFile = false,
+    this.onCancelFile,
     this.line,
     this.onPickLine,
     this.blank = false,
@@ -84,13 +88,24 @@ class WizardBody extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _StepLabel('第 1 步 · 做哪条线'),
-        WizardSourceStep(
-            filePath: filePath,
-            line: line,
-            onPickLine: onPickLine,
-            onPickFile: onPickFile,
-            blank: blank,
-            onPickBlank: onPickBlank),
+        IgnorePointer(
+          ignoring: pickingFile,
+          child: WizardSourceStep(
+              filePath: filePath,
+              pickingFile: pickingFile,
+              line: line,
+              onPickLine: onPickLine,
+              onPickFile: onPickFile,
+              blank: blank,
+              onPickBlank: onPickBlank),
+        ),
+        if (pickingFile && onCancelFile != null)
+          TextButton.icon(
+            key: const Key('wizard-cancel-file'),
+            onPressed: onCancelFile,
+            icon: const Icon(Icons.close, size: 16),
+            label: const Text('取消文件选择'),
+          ),
         const SizedBox(height: AppSpacing.lg),
         const _StepLabel('第 2 步 · 项目与标签组（素材从哪儿来、按什么打标）'),
         // 项目在最上面：先定「上哪儿找素材」，再定「按什么打标」
